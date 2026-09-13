@@ -7,32 +7,41 @@ leem este arquivo + o `Plano.md` antes de começar. Mais recente no topo.
 
 ## Sessão 1 — Scaffold (2026-09-12)
 
-Branch: `session-1-scaffold`. Commit: `Scaffold: Node signaling server + static frontend shell`.
+Branch: `session-1-scaffold`.
+
+**Backend em Go** (decidido no meio da sessão: mais familiaridade do usuário e
+consistência com os outros projetos dele, também em Go; troca barata no scaffold e o
+frontend não muda). O scaffold Node inicial foi descartado antes do merge.
 
 **Feito:**
-- Projeto Node (ESM, `"type": "module"`). Deps: `express` (servir estático) e
-  `ws` (WebSocket de sinalização). Scripts: `npm start`, `npm run dev` (--watch).
-- `server/index.js`: HTTP + WebSocket no mesmo servidor. Serve `public/`, expõe
-  `GET /healthz` e o endpoint WS em `/ws` (só esqueleto: manda `hello` e loga
-  mensagens — sem salas/auth/WebRTC ainda).
-- `server/config.js`: lê env com defaults (`PORT`, `ADMIN_USER`,
-  `ADMIN_PASSWORD`, `ROOM_TTL_MINUTES`, `MAX_PARTICIPANTS`). `.env` carregado via
-  `process.loadEnvFile()` nativo (sem dep de dotenv). Exemplo em `.env.example`.
+- Módulo Go `github.com/arthurdepina/concorde` (Go 1.25). Dep única:
+  `github.com/coder/websocket`.
+- `cmd/server/main.go`: HTTP + WebSocket no mesmo servidor (`net/http` +
+  `http.FileServer` para `public/`). Rotas: `GET /healthz`, WS em `/ws` (só
+  esqueleto: manda `hello` e loga mensagens — sem salas/auth/WebRTC ainda).
+- `internal/config/config.go`: lê env com defaults (`PORT`, `ADMIN_USER`,
+  `ADMIN_PASSWORD`, `ROOM_TTL_MINUTES`, `MAX_PARTICIPANTS`); mini-loader de
+  `.env` embutido (sem dependência externa). Exemplo em `.env.example`.
 - `public/`: `index.html` + `styles.css` (tema cinza-azulado via CSS vars) +
   `app.js` (conecta no `/ws` e reflete o status de conexão; botão "Transmitir"
-  ainda é placeholder).
+  ainda é placeholder). **Frontend inalterado desde o scaffold Node.**
 
-**Como rodar:** `npm install` → `npm start` → abrir `http://localhost:3000`.
+**Como rodar:** `go run ./cmd/server` → abrir `http://localhost:3000`.
+Build: `go build -o bin/concorde ./cmd/server`.
 
-**Verificado:** servidor sobe; `/healthz` retorna `{"ok":true}`; index é
-servido; WS conecta e troca mensagem `hello`.
+**Verificado:** servidor sobe e loga a URL; `/healthz` retorna `{"ok":true}`;
+index é servido; WS conecta e recebe `{"type":"hello","from":"concorde"}`.
 
 **Estrutura:**
 ```
-server/   index.js, config.js
-public/   index.html, styles.css, app.js
-package.json, .env.example, .gitignore
+cmd/server/            main.go
+internal/config/       config.go
+public/                index.html, styles.css, app.js
+go.mod, go.sum, .env.example, .gitignore
 ```
+
+**Nota (Windows):** `go run` deixa o binário filho rodando; ao testar, matar o
+processo que ocupa a porta 3000 antes de subir de novo (senão dá erro de bind).
 
 **Próximo:** Sessão 2 — Salas, senha e login de admin (ver `Plano.md`).
 
