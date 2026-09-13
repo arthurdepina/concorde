@@ -1,0 +1,18 @@
+# Planning file — must never be committed (per project rules)
+Plano.md
+
+# Go build output
+/bin/
+*.exe
+concorde
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

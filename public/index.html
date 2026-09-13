@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Concorde</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="topbar">
+        <h1 class="brand">Concorde</h1>
+        <button id="broadcast-btn" class="btn-primary" type="button">
+          Transmitir
+        </button>
+      </header>
+
+      <section class="stage">
+        <div id="video-window" class="video-window">
+          <p class="placeholder">Nenhuma transmissão ainda.</p>
+        </div>
+      </section>
+
+      <footer class="statusbar">
+        <span id="conn-status" class="status status--off">desconectado</span>
+      </footer>
+    </main>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
