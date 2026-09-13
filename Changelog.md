@@ -5,6 +5,58 @@ leem este arquivo + o `Plano.md` antes de começar. Mais recente no topo.
 
 ---
 
+## Sessão 3 — Núcleo WebRTC (2026-09-13)
+
+Branch: `session-2-rooms` (continuação).
+
+Caminho de mídia ligado: o admin captura uma **aba** com `getDisplayMedia` e
+transmite direto para cada espectador via `RTCPeerConnection`. A mídia nunca
+passa pelo servidor — ele só faz o relay dos `signal` (SDP/ICE) já pronto na
+Sessão 2. Tudo é frontend; o backend não mudou.
+
+**Topologia:** só o broadcaster envia mídia, então é uma **estrela**, não mesh.
+O broadcaster é sempre quem faz a `offer`; o viewer só responde. Como os papéis
+são fixos, não há "glare" — dispensa perfect-negotiation.
+
+**Feito (`public/`):**
+- `app.js`: camada WebRTC.
+  - `RTCPeerConnection` por peer (`state.pcs`), STUN público do Google
+    (`stun:stun.l.google.com:19302`). Sem TURN (decisão do plano).
+  - Broadcaster: `startBroadcast` → `getDisplayMedia` (vídeo `ideal 1920×1080
+    @30fps`, áudio com `echoCancellation`/`noiseSuppression`/`autoGainControl`
+    desligados para não tratar anime/música como voz). `offerTo(peer)` anexa as
+    tracks e manda a offer. Botão vira "Parar transmissão"; encerrar o
+    compartilhamento pela UI do navegador (evento `ended`) também para.
+  - Viewer: ao receber `offer`, cria a PC, `ontrack` → exibe o stream, responde
+    com `answer`.
+  - **ICE trickle** com buffer: candidatos que chegam antes da remote description
+    ficam em `pc.pendingCandidates` e são drenados por `flushCandidates`.
+  - Ciclo de vida: `peer-joined` durante transmissão → offer ao novo viewer;
+    `peer-left` → fecha a PC (viewer sem PCs → esconde o vídeo); sair da sala /
+    socket fechar → `stopMedia` (para tracks, fecha PCs, limpa o vídeo).
+  - Botão "Transmitir" só aparece para o broadcaster (`updateBroadcastButton`).
+- `index.html`: `<video>` + placeholder + barra de volume sobre o vídeo.
+- `styles.css`: `.video`, `.video-controls` (aparece no hover/foco), `.volume`
+  com `<input type=range>` (`accent-color`). Preview do broadcaster fica **mudo**
+  (sem eco); só o viewer vê/usa o controle de volume.
+
+**Protocolo de `signal.payload`** (opaco pro servidor, definido no frontend):
+`{kind:"offer"|"answer", sdp}` e `{kind:"ice", candidate}`.
+
+**Verificado:** `go build`/`vet`/`test ./...` limpos (backend intacto);
+`node --check public/app.js` ok; servidor serve o index já com `#video`,
+`#video-controls` e `#volume`.
+
+**Não verificado aqui (precisa de você, navegador real):** o fluxo P2P de ponta
+a ponta e, principalmente, a **captura de áudio da aba** (flag do plano). Ao
+rodar: abrir 2 abas Chrome, numa criar sala como admin e clicar "Transmitir"
+escolhendo **uma aba** com a opção *"compartilhar áudio da aba"* marcada; na
+outra, entrar com o código+senha e confirmar vídeo + som + controle de volume.
+
+**Próximo:** Sessão 4 — TTL de sala ociosa + tela de admin (ver salas e fechar).
+
+---
+
 ## Sessão 2 — Salas, senha e admin (2026-09-13)
 
 Branch: `session-2-rooms`.

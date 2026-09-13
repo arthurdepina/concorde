@@ -17,7 +17,17 @@
 
       <section class="stage">
         <div id="video-window" class="video-window">
-          <p class="placeholder">Nenhuma transmissão ainda.</p>
+          <p id="video-placeholder" class="placeholder">
+            Nenhuma transmissão ainda.
+          </p>
+          <video id="video" class="video" playsinline hidden></video>
+          <div id="video-controls" class="video-controls" hidden>
+            <label class="volume">
+              <span class="volume__icon" aria-hidden="true">🔊</span>
+              <input id="volume" class="volume__slider" type="range"
+                     min="0" max="100" value="100" aria-label="Volume" />
+            </label>
+          </div>
         </div>
 
         <aside class="panel">
