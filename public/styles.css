@@ -122,6 +122,12 @@ body {
   gap: 16px;
 }
 
+/* An explicit `display` on the class would otherwise beat the [hidden]
+   attribute, leaving both views on screen at once. */
+.panel__view[hidden] {
+  display: none;
+}
+
 .card {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
