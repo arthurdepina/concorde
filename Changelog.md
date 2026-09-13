@@ -5,6 +5,39 @@ leem este arquivo + o `Plano.md` antes de começar. Mais recente no topo.
 
 ---
 
+## Sessão 1 — Scaffold (2026-09-12)
+
+Branch: `session-1-scaffold`. Commit: `Scaffold: Node signaling server + static frontend shell`.
+
+**Feito:**
+- Projeto Node (ESM, `"type": "module"`). Deps: `express` (servir estático) e
+  `ws` (WebSocket de sinalização). Scripts: `npm start`, `npm run dev` (--watch).
+- `server/index.js`: HTTP + WebSocket no mesmo servidor. Serve `public/`, expõe
+  `GET /healthz` e o endpoint WS em `/ws` (só esqueleto: manda `hello` e loga
+  mensagens — sem salas/auth/WebRTC ainda).
+- `server/config.js`: lê env com defaults (`PORT`, `ADMIN_USER`,
+  `ADMIN_PASSWORD`, `ROOM_TTL_MINUTES`, `MAX_PARTICIPANTS`). `.env` carregado via
+  `process.loadEnvFile()` nativo (sem dep de dotenv). Exemplo em `.env.example`.
+- `public/`: `index.html` + `styles.css` (tema cinza-azulado via CSS vars) +
+  `app.js` (conecta no `/ws` e reflete o status de conexão; botão "Transmitir"
+  ainda é placeholder).
+
+**Como rodar:** `npm install` → `npm start` → abrir `http://localhost:3000`.
+
+**Verificado:** servidor sobe; `/healthz` retorna `{"ok":true}`; index é
+servido; WS conecta e troca mensagem `hello`.
+
+**Estrutura:**
+```
+server/   index.js, config.js
+public/   index.html, styles.css, app.js
+package.json, .env.example, .gitignore
+```
+
+**Próximo:** Sessão 2 — Salas, senha e login de admin (ver `Plano.md`).
+
+---
+
 ## Sessão 0 — Planejamento (2026-09-12)
 
 **Feito:**
