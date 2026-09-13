@@ -19,6 +19,46 @@
         <div id="video-window" class="video-window">
           <p class="placeholder">Nenhuma transmissão ainda.</p>
         </div>
+
+        <aside class="panel">
+          <!-- Shown while not in a room. -->
+          <div id="lobby" class="panel__view">
+            <form id="create-form" class="card">
+              <h2 class="card__title">Criar sala (admin)</h2>
+              <input id="admin-user" class="field" type="text"
+                     placeholder="Usuário admin" autocomplete="username" />
+              <input id="admin-pass" class="field" type="password"
+                     placeholder="Senha admin" autocomplete="current-password" />
+              <input id="new-room-pass" class="field" type="text"
+                     placeholder="Senha da sala (para os amigos)" />
+              <button class="btn-primary" type="submit">Criar sala</button>
+            </form>
+
+            <form id="join-form" class="card">
+              <h2 class="card__title">Entrar em uma sala</h2>
+              <input id="join-room-id" class="field" type="text"
+                     placeholder="Código da sala" autocapitalize="characters" />
+              <input id="join-room-pass" class="field" type="password"
+                     placeholder="Senha da sala" />
+              <button class="btn-secondary" type="submit">Entrar</button>
+            </form>
+
+            <p id="lobby-error" class="error" hidden></p>
+          </div>
+
+          <!-- Shown while in a room. -->
+          <div id="room-view" class="panel__view" hidden>
+            <div class="card">
+              <h2 class="card__title">Sala</h2>
+              <p class="room-code"><span id="room-code">------</span></p>
+              <p class="room-role">Você é <strong id="room-role">—</strong></p>
+              <ul id="peer-list" class="peer-list"></ul>
+              <button id="leave-btn" class="btn-secondary" type="button">
+                Sair da sala
+              </button>
+            </div>
+          </div>
+        </aside>
       </section>
 
       <footer class="statusbar">

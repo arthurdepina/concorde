@@ -63,9 +63,28 @@ body {
   background: var(--accent-hover);
 }
 
+.btn-secondary {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.btn-secondary:hover {
+  border-color: var(--accent);
+  background: var(--bg-elevated);
+}
+
 .stage {
   flex: 1;
   display: flex;
+  gap: 16px;
+  align-items: flex-start;
 }
 
 .video-window {
@@ -92,9 +111,101 @@ body {
   font-size: 0.95rem;
 }
 
+.panel {
+  width: 300px;
+  flex-shrink: 0;
+}
+
+.panel__view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.card__title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.field {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 12px;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.field::placeholder {
+  color: var(--text-muted);
+}
+
+.field:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.error {
+  color: #d4756b;
+  font-size: 0.85rem;
+}
+
+.room-code {
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: var(--accent-hover);
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+
+.room-role {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.room-role strong {
+  color: var(--text);
+}
+
+.peer-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.peer-list li {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  padding: 6px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
 .statusbar {
   display: flex;
   justify-content: flex-end;
+}
+
+@media (max-width: 800px) {
+  .stage {
+    flex-direction: column;
+  }
+  .panel {
+    width: 100%;
+  }
 }
 
 .status {

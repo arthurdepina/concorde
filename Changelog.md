@@ -5,6 +5,62 @@ leem este arquivo + o `Plano.md` antes de começar. Mais recente no topo.
 
 ---
 
+## Sessão 2 — Salas, senha e admin (2026-09-13)
+
+Branch: `session-2-rooms`.
+
+Núcleo de sinalização: admin cria sala, amigos entram por senha, limite de 3, e
+o **relay de mensagens WebRTC já está pronto** (o `getDisplayMedia`/mídia em si
+fica para a Sessão 3). Mídia nunca passa pelo servidor.
+
+**Feito:**
+- Novo pacote `internal/signaling/` (o `handleWS` do scaffold saiu do `main.go`):
+  - `hub.go`: `Hub` com um único `sync.Mutex` guardando `rooms` e a participação
+    dos clientes (simples e suficiente para poucas salas pequenas). Métodos
+    `ServeWS`, `createRoom`, `joinRoom`, `leaveRoom`, `relay`, `removeLocked`.
+  - `client.go`: `Client` com read loop (parse + dispatch) e um write loop
+    dedicado drenando um canal `send` bufferizado (32). Envio é **não-bloqueante**
+    (`enqueue`) para nunca travar o hub segurando o lock; overflow só loga e
+    descarta (não acontece em salas de 3).
+  - `room.go`: `Room` (id, senha, clients, `createdAt`, `lastActive`). O
+    `lastActive` já é atualizado, pronto para o TTL da Sessão 4.
+  - `messages.go`: protocolo JSON (in/out) + códigos de erro estáveis + papéis
+    (`broadcaster`/`viewer`).
+  - `ids.go`: `randomCode` via `crypto/rand`, alfabeto sem caracteres ambíguos
+    (código de sala de 6, id de cliente de 10).
+- **Papéis:** quem cria a sala é `broadcaster` (é a tela do admin que assistimos);
+  quem entra é `viewer`. Alinha com a monetização (host = feature paga depois).
+- **Protocolo WebSocket** (JSON, campo `type`):
+  - cliente→servidor: `create-room {user,password,roomPassword}`,
+    `join-room {roomId,roomPassword}`, `signal {to,payload}`, `leave-room`.
+  - servidor→cliente: `hello`, `room-created {roomId,selfId,role}`,
+    `joined {roomId,selfId,role,peers[]}`, `peer-joined {peerId,role}`,
+    `peer-left {peerId}`, `signal {from,payload}`, `error {code,message}`.
+  - erros: `bad-admin`, `bad-room-password`, `room-not-found`, `room-full`,
+    `not-in-room`, `peer-not-found`, `bad-message`.
+- **Frontend** (`public/`): painel lateral com formulário de criar sala (admin)
+  e de entrar por senha; visão da sala mostra código, papel e lista de peers;
+  botão "Sair da sala". `app.js` faz o handshake de sinalização e reflete o
+  estado (mensagens `signal` já chegam, apenas logadas até a Sessão 3). Estilos
+  novos (`.card`, `.field`, `.btn-secondary`, `.room-code`, etc.), responsivo.
+
+**Como rodar:** igual à Sessão 1 (`go run ./cmd/server` → `localhost:3000`).
+Abrir duas abas: numa criar sala como admin, noutra entrar com o código+senha.
+
+**Verificado:**
+- `internal/signaling/hub_test.go` (integração via `httptest` + cliente WS):
+  auth de admin, senha da sala obrigatória, fluxo de entrada + notificação de
+  peer, senha errada, sala cheia (4º rejeitado), relay de `signal` entre peers,
+  `peer-left` ao sair. `go build`, `go vet` e `go test ./...` limpos.
+  *(`-race` não roda aqui: falta compilador C 64-bit no ambiente Windows.)*
+- Servidor sobe em porta alternativa, `/healthz` → `{"ok":true}`, index (200)
+  já contém o painel novo.
+
+**Próximo:** Sessão 3 — Núcleo WebRTC (`getDisplayMedia`, P2P transmissor→
+espectadores, exibir vídeo, controle de volume). O relay de `signal` já existe.
+
+---
+
 ## Sessão 1 — Scaffold (2026-09-12)
 
 Branch: `session-1-scaffold`.
