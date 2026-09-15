@@ -32,12 +32,6 @@ const els = {
   fullscreenBtn: document.getElementById("fullscreen-btn"),
   browserWarning: document.getElementById("browser-warning"),
   browserWarningClose: document.getElementById("browser-warning-close"),
-  startDialog: document.getElementById("start-dialog"),
-  startConfirm: document.getElementById("start-confirm"),
-  startCancel: document.getElementById("start-cancel"),
-  stopDialog: document.getElementById("stop-dialog"),
-  stopConfirm: document.getElementById("stop-confirm"),
-  stopCancel: document.getElementById("stop-cancel"),
   toasts: document.getElementById("toasts"),
 };
 
@@ -521,27 +515,13 @@ els.leaveBtn.addEventListener("click", () => {
   leaveLocal();
 });
 
-// The broadcast button routes through a confirmation dialog either way: a
-// reminder to share a tab with audio before starting, and a guard before
-// stopping (which cuts the stream for everyone).
 els.broadcastBtn.addEventListener("click", () => {
   if (state.role !== "broadcaster") return;
   if (state.localStream) {
-    els.stopDialog.showModal();
+    stopBroadcast();
   } else {
-    els.startDialog.showModal();
+    startBroadcast();
   }
-});
-
-els.startCancel.addEventListener("click", () => els.startDialog.close());
-els.startConfirm.addEventListener("click", () => {
-  els.startDialog.close();
-  startBroadcast();
-});
-els.stopCancel.addEventListener("click", () => els.stopDialog.close());
-els.stopConfirm.addEventListener("click", () => {
-  els.stopDialog.close();
-  stopBroadcast();
 });
 
 els.fullscreenBtn.addEventListener("click", toggleFullscreen);

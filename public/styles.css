@@ -28,7 +28,7 @@ body {
 }
 
 .app {
-  max-width: 1280px;
+  max-width: 1080px;
   margin: 0 auto;
   padding: 16px;
   display: flex;
@@ -37,6 +37,7 @@ body {
   min-height: 100vh;
 }
 
+/* Still used by the admin page header. */
 .topbar {
   display: flex;
   align-items: center;
@@ -45,9 +46,15 @@ body {
 }
 
 .brand {
-  font-size: 1.25rem;
+  font-size: 1.35rem;
   font-weight: 600;
   letter-spacing: 0.5px;
+}
+
+/* On the main page the brand is a standalone, centered page title. */
+.app > .brand {
+  text-align: center;
+  margin-top: 4px;
 }
 
 .btn-primary {
@@ -83,16 +90,22 @@ body {
   background: var(--bg-elevated);
 }
 
+/* Player stacked over its controls: the video window, then the broadcast
+   button aligned to the window's right edge. */
 .stage {
-  flex: 1;
   display: flex;
-  gap: 16px;
-  align-items: flex-start;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.stage__actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .video-window {
   position: relative;
-  flex: 1;
+  width: 100%;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -189,8 +202,7 @@ body {
 }
 
 .panel {
-  width: 300px;
-  flex-shrink: 0;
+  width: 100%;
 }
 
 .panel__view {
@@ -203,6 +215,31 @@ body {
    attribute, leaving both views on screen at once. */
 .panel__view[hidden] {
   display: none;
+}
+
+/* The two entry forms sit side by side and share a height: the grid stretches
+   both cards to the taller one, and pinning each submit button to the bottom
+   turns the shorter form's slack into deliberate empty space. */
+.lobby-forms {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: stretch;
+}
+
+.lobby-forms .card {
+  height: 100%;
+}
+
+.lobby-forms .card button {
+  margin-top: auto;
+}
+
+/* In a room, the single card reads better centered and not stretched wide. */
+#room-view {
+  max-width: 420px;
+  width: 100%;
+  margin: 0 auto;
 }
 
 .card {
@@ -282,6 +319,7 @@ body {
   justify-content: flex-end;
   align-items: center;
   gap: 12px;
+  margin-top: auto;
 }
 
 .admin-link {
@@ -294,12 +332,9 @@ body {
   color: var(--text);
 }
 
-@media (max-width: 800px) {
-  .stage {
-    flex-direction: column;
-  }
-  .panel {
-    width: 100%;
+@media (max-width: 640px) {
+  .lobby-forms {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -457,45 +492,6 @@ a.btn-secondary {
   border: none;
   border-radius: 0;
   aspect-ratio: auto;
-}
-
-/* --- dialogs -------------------------------------------------------------- */
-
-.dialog {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--bg-elevated);
-  color: var(--text);
-  padding: 20px;
-  max-width: 420px;
-  width: calc(100% - 32px);
-}
-
-.dialog::backdrop {
-  background: rgba(0, 0, 0, 0.55);
-}
-
-.dialog__title {
-  font-size: 1.05rem;
-  font-weight: 600;
-  margin-bottom: 10px;
-}
-
-.dialog__body {
-  font-size: 0.9rem;
-  color: var(--text-muted);
-  line-height: 1.5;
-  margin-bottom: 18px;
-}
-
-.dialog__body strong {
-  color: var(--text);
-}
-
-.dialog__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
 }
 
 /* --- toasts --------------------------------------------------------------- */

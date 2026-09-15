@@ -5,6 +5,45 @@ leem este arquivo + o `Plano.md` antes de começar. Mais recente no topo.
 
 ---
 
+## Sessão 6 — Ajustes de layout (Fase B) (2026-09-15)
+
+Branch: `main`.
+
+Primeira rodada de ajustes da Fase B, a partir do teu feedback na primeira
+versão. Tudo frontend (layout/CSS + limpeza); backend intacto.
+
+- **Confirmações removidas.** Os dois `<dialog>` da Sessão 5 saíram: clicar
+  "Transmitir" vai direto ao seletor de janela do navegador (que já é a chance
+  de desistir) e "Parar transmissão" para na hora. Removidos o HTML dos diálogos,
+  o CSS (`.dialog*`) e o wiring no `app.js`.
+- **Layout vertical e centralizado.** A `.topbar` (marca + botão numa linha) deu
+  lugar a uma coluna centralizada (`.app` com `max-width` 1080px): a marca
+  "Concorde" virou título centralizado acima do player, e o **player ficou um
+  pouco maior** (ocupa a largura da coluna, ~1048px contra ~930 antes) e
+  centralizado.
+- **Botão de transmitir sob o player.** Saiu do topo; agora fica logo abaixo do
+  player, **alinhado à direita** dele (`.stage` virou coluna e `.stage__actions`
+  usa `justify-content: flex-end`).
+- **Formulários lado a lado, mesma altura.** "Criar sala" e "Entrar em uma sala"
+  ficam num grid de duas colunas iguais (`.lobby-forms`). O grid estica os dois
+  cards para a mesma altura e o botão de cada um é fixado embaixo
+  (`margin-top: auto`), então o form mais curto ("Entrar") ganha um espaço vazio
+  proposital e os dois botões alinham na mesma linha. Empilham em telas ≤640px.
+- Room-view centralizado com largura máxima; rodapé fixado embaixo
+  (`margin-top: auto`).
+
+**Verificado:** `node --check` no `app.js`, `go build`/`vet` limpos, e smoke test
+do servidor — index servido com marca centralizada, `.stage__actions` e
+`.lobby-forms`, e sem os diálogos; CSS idem.
+
+**Não verificado aqui (precisa de você, navegador real):** o visual final do novo
+layout. Roda local e me diz se o tamanho e o alinhamento do player e o
+espaçamento dos forms ficaram do teu gosto.
+
+**Próximo:** Fase B segue aberta — mais ajustes conforme teu feedback.
+
+---
+
 ## Sessão 5 — Polimento e teste ponta a ponta (2026-09-15)
 
 Branch: `main`.

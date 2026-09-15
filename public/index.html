@@ -19,12 +19,7 @@
                 aria-label="Dispensar aviso">×</button>
       </div>
 
-      <header class="topbar">
-        <h1 class="brand">Concorde</h1>
-        <button id="broadcast-btn" class="btn-primary" type="button">
-          Transmitir
-        </button>
-      </header>
+      <h1 class="brand">Concorde</h1>
 
       <section class="stage">
         <div id="video-window" class="video-window">
@@ -42,10 +37,18 @@
                     aria-label="Tela cheia" title="Tela cheia">⛶</button>
           </div>
         </div>
+        <!-- Broadcast control sits just under the player, aligned to its right. -->
+        <div class="stage__actions">
+          <button id="broadcast-btn" class="btn-primary" type="button">
+            Transmitir
+          </button>
+        </div>
+      </section>
 
-        <aside class="panel">
-          <!-- Shown while not in a room. -->
-          <div id="lobby" class="panel__view">
+      <aside class="panel">
+        <!-- Shown while not in a room: the two entry forms, side by side. -->
+        <div id="lobby" class="panel__view">
+          <div class="lobby-forms">
             <form id="create-form" class="card">
               <h2 class="card__title">Criar sala (admin)</h2>
               <input id="admin-user" class="field" type="text"
@@ -65,63 +68,30 @@
                      placeholder="Senha da sala" />
               <button class="btn-secondary" type="submit">Entrar</button>
             </form>
-
-            <p id="lobby-error" class="error" hidden></p>
           </div>
 
-          <!-- Shown while in a room. -->
-          <div id="room-view" class="panel__view" hidden>
-            <div class="card">
-              <h2 class="card__title">Sala</h2>
-              <p class="room-code"><span id="room-code">------</span></p>
-              <p class="room-role">Você é <strong id="room-role">—</strong></p>
-              <ul id="peer-list" class="peer-list"></ul>
-              <button id="leave-btn" class="btn-secondary" type="button">
-                Sair da sala
-              </button>
-            </div>
+          <p id="lobby-error" class="error" hidden></p>
+        </div>
+
+        <!-- Shown while in a room. -->
+        <div id="room-view" class="panel__view" hidden>
+          <div class="card">
+            <h2 class="card__title">Sala</h2>
+            <p class="room-code"><span id="room-code">------</span></p>
+            <p class="room-role">Você é <strong id="room-role">—</strong></p>
+            <ul id="peer-list" class="peer-list"></ul>
+            <button id="leave-btn" class="btn-secondary" type="button">
+              Sair da sala
+            </button>
           </div>
-        </aside>
-      </section>
+        </div>
+      </aside>
 
       <footer class="statusbar">
         <a class="admin-link" href="/admin.html">admin</a>
         <span id="conn-status" class="status status--off">desconectado</span>
       </footer>
     </main>
-
-    <!-- Confirm before capturing: picking a screen/window instead of a tab (or
-         forgetting "share tab audio") is the usual reason there is no sound. -->
-    <dialog id="start-dialog" class="dialog">
-      <h2 class="dialog__title">Transmitir</h2>
-      <p class="dialog__body">
-        Na janela que vai abrir, escolha a <strong>aba</strong> do vídeo e marque
-        <strong>“Compartilhar áudio da aba”</strong> — senão os amigos não ouvem
-        o som.
-      </p>
-      <div class="dialog__actions">
-        <button id="start-cancel" class="btn-secondary" type="button">
-          Cancelar
-        </button>
-        <button id="start-confirm" class="btn-primary" type="button">
-          Continuar
-        </button>
-      </div>
-    </dialog>
-
-    <!-- Confirm before stopping: this ends the stream for everyone at once. -->
-    <dialog id="stop-dialog" class="dialog">
-      <h2 class="dialog__title">Parar transmissão</h2>
-      <p class="dialog__body">Isso encerra a transmissão para todos na sala.</p>
-      <div class="dialog__actions">
-        <button id="stop-cancel" class="btn-secondary" type="button">
-          Cancelar
-        </button>
-        <button id="stop-confirm" class="btn-primary is-live" type="button">
-          Parar
-        </button>
-      </div>
-    </dialog>
 
     <!-- View-independent, transient notices (capture/connection errors, etc.). -->
     <div id="toasts" class="toasts" aria-live="polite"></div>
