@@ -5,6 +5,36 @@ leem este arquivo + o `Plano.md` antes de começar. Mais recente no topo.
 
 ---
 
+## Sessão 9 — Revisão e limpeza de código (2026-09-15)
+
+Branch: `main`. Sem feedback visual novo nesta rodada — passada de qualidade no
+código (frontend + backend) procurando bugs e inconsistências.
+
+**Achado e corrigido — vazamento de `RTCPeerConnection` no viewer.** Em
+`handleSignal`, ao receber um `offer`, o viewer criava uma PC nova sob a chave
+`from` **sem fechar** uma PC anterior para o mesmo peer. Como o id do broadcaster
+não muda, parar e recomeçar a transmissão fazia o viewer receber um segundo
+`offer` e deixava a PC velha órfã (ICE/mídia nunca liberados). Agora o `offer`
+fecha e remove qualquer PC existente para aquele peer antes de criar a nova.
+
+**Achado e deixado para depois (não é limpeza, é feature).** Quando o broadcaster
+para normalmente, o `stopMedia` fecha as PCs do lado dele e a PC do viewer cai em
+`failed` segundos depois, disparando o toast "Falha na conexão com quem
+transmite" — assustador para uma parada normal. Corrigir direito exige relayar
+`broadcast-stop` aos viewers (adição ao protocolo), então fica como decisão para
+uma próxima sessão.
+
+**Resto da revisão:** backend (Go) e o restante do frontend estão limpos —
+bem comentados, testados e consistentes. Sem outras mudanças. A classe CSS
+`.topbar` segue em uso (header do `/admin.html`), apesar de o index não usar mais.
+
+**Verificado:** `go build`/`vet`/`test ./...` limpos (backend intacto);
+`node --check` nos dois JS ok. A correção do vazamento não tem como ser vista sem
+navegador — o comportamento visível (recomeçar a transmissão) continua igual;
+muda só que a PC antiga não fica mais pendurada.
+
+---
+
 ## Sessão 8 — Status no topo (Fase B) (2026-09-15)
 
 Branch: `main`. HTML + CSS.

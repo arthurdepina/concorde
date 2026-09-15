@@ -210,6 +210,14 @@ async function handleSignal(from, payload) {
     switch (payload.kind) {
       case "offer": {
         // Viewer side: answer the broadcaster and show the incoming stream.
+        // A fresh offer supersedes any earlier connection to this peer (e.g. the
+        // broadcaster stopped and started again), so drop the stale one first
+        // instead of leaking it under the same peer id.
+        const stale = state.pcs.get(from);
+        if (stale) {
+          stale.close();
+          state.pcs.delete(from);
+        }
         const pc = createPeerConnection(from);
         pc.addEventListener("track", (e) => showRemoteStream(e.streams[0]));
         await pc.setRemoteDescription(payload.sdp);
