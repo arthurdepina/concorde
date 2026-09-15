@@ -5,6 +5,32 @@ leem este arquivo + o `Plano.md` antes de começar. Mais recente no topo.
 
 ---
 
+## Sessão 8 — Status no topo (Fase B) (2026-09-15)
+
+Branch: `main`. HTML + CSS.
+
+O link "admin" e o indicador de conexão saíram do rodapé e foram para um
+**cabeçalho acima do player, alinhados à direita**, lado a lado. A marca
+"Concorde" continua centralizada, agora na mesma linha do status.
+
+- `index.html`: o `<h1>` da marca e o antigo `<footer class="statusbar">` viraram
+  um `<header class="header">` com a marca + um `<div class="statusbar">` (mesmo
+  conteúdo, mesmo `#conn-status`). O rodapé de baixo deixou de existir.
+- `styles.css`: `.header` é um grid de 3 colunas
+  (`minmax(0,1fr) auto minmax(0,1fr)`) — a marca fica na coluna central (segue
+  centralizada na página, independente da largura do status) e o status na
+  direita (`justify-self: end`). As margens verticais do header preservam o
+  espaçamento simétrico marca↔topo / marca↔player da Sessão 7. `.header
+  .statusbar` zera o `margin-top: auto` (que só serve ao rodapé do admin).
+- O `.statusbar` base e a página de admin não mudaram (admin ainda usa como
+  rodapé).
+
+**Verificado:** smoke test — index com `<header>`, status dentro dele, sem
+`<footer>`; `#conn-status` preservado; CSS com as regras do header. Visual final
+depende de você (navegador).
+
+---
+
 ## Sessão 7 — Ajustes finos de espaçamento (Fase B) (2026-09-15)
 
 Branch: `main`. Só CSS.

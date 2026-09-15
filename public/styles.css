@@ -51,13 +51,28 @@ body {
   letter-spacing: 0.5px;
 }
 
-/* On the main page the brand is a standalone, centered page title. The top and
-   bottom margins (added to .app's padding above and its gap below) make the space
-   over the brand equal to the space between the brand and the player. */
-.app > .brand {
-  text-align: center;
+/* Header above the player: the brand stays centered on the page (auto middle
+   column between two equal, shrinkable side columns) while the status sits at the
+   right edge. The top/bottom margins (added to .app's padding above and its gap
+   below) keep the space over the brand equal to the space down to the player. */
+.header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
   margin-top: 4px;
   margin-bottom: 4px;
+}
+
+.header .brand {
+  grid-column: 2;
+  text-align: center;
+}
+
+.header .statusbar {
+  grid-column: 3;
+  justify-self: end;
+  margin-top: 0; /* not a footer here (unlike the admin page) */
 }
 
 .btn-primary {

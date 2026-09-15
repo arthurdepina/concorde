@@ -19,7 +19,13 @@
                 aria-label="Dispensar aviso">×</button>
       </div>
 
-      <h1 class="brand">Concorde</h1>
+      <header class="header">
+        <h1 class="brand">Concorde</h1>
+        <div class="statusbar">
+          <a class="admin-link" href="/admin.html">admin</a>
+          <span id="conn-status" class="status status--off">desconectado</span>
+        </div>
+      </header>
 
       <section class="stage">
         <div id="video-window" class="video-window">
@@ -86,11 +92,6 @@
           </div>
         </div>
       </aside>
-
-      <footer class="statusbar">
-        <a class="admin-link" href="/admin.html">admin</a>
-        <span id="conn-status" class="status status--off">desconectado</span>
-      </footer>
     </main>
 
     <!-- View-independent, transient notices (capture/connection errors, etc.). -->
