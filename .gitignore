@@ -1,5 +1,7 @@
-# Planning file — must never be committed (per project rules)
+# Planning / internal docs — kept local, never committed (per project rules)
 Plano.md
+spec-pt-br.md
+task.md
 
 # Go build output
 /bin/
