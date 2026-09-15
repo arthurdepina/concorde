@@ -5,6 +5,30 @@ leem este arquivo + o `Plano.md` antes de começar. Mais recente no topo.
 
 ---
 
+## Sessão 7 — Ajustes finos de espaçamento (Fase B) (2026-09-15)
+
+Branch: `main`. Só CSS.
+
+Segunda rodada de ajustes de layout, a partir do teu feedback:
+
+- **Room-view alinhado à esquerda.** Tirei o `margin: 0 auto` do `#room-view`:
+  quando a sala é criada, o card da sala agora fica à esquerda (como os forms do
+  lobby), não mais centralizado.
+- **Gap player↔forms igual ao gap entre os forms.** No lobby o botão de
+  transmitir fica escondido, mas a `.stage__actions` (vazia) + o `gap` da
+  `.stage` deixavam um espaço morto sob o player, tornando o vão player↔forms
+  maior que o vão entre os dois forms. Agora `.stage__actions:has(> [hidden])`
+  colapsa a linha quando o botão está escondido, então os dois vãos ficam iguais
+  (16px) e os forms sobem para perto do player.
+- **Espaço acima e abaixo de "Concorde" igual.** Um `margin-bottom: 4px` no
+  título (somado ao `gap` da `.app`) iguala o vão marca↔player ao vão topo↔marca,
+  descendo o player os 4px que faltavam.
+
+**Verificado:** smoke test do servidor — `styles.css` servido com as regras
+novas; index 200. Visual final depende de você (navegador).
+
+---
+
 ## Sessão 6 — Ajustes de layout (Fase B) (2026-09-15)
 
 Branch: `main`.

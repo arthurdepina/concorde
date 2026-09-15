@@ -51,10 +51,13 @@ body {
   letter-spacing: 0.5px;
 }
 
-/* On the main page the brand is a standalone, centered page title. */
+/* On the main page the brand is a standalone, centered page title. The top and
+   bottom margins (added to .app's padding above and its gap below) make the space
+   over the brand equal to the space between the brand and the player. */
 .app > .brand {
   text-align: center;
   margin-top: 4px;
+  margin-bottom: 4px;
 }
 
 .btn-primary {
@@ -101,6 +104,14 @@ body {
 .stage__actions {
   display: flex;
   justify-content: flex-end;
+}
+
+/* Collapse the actions row when the broadcast button is hidden (in the lobby, or
+   for a viewer): otherwise its empty box plus the .stage gap leave dead space
+   under the player, making the player↔forms gap larger than the gap between the
+   two forms. */
+.stage__actions:has(> [hidden]) {
+  display: none;
 }
 
 .video-window {
@@ -235,11 +246,11 @@ body {
   margin-top: auto;
 }
 
-/* In a room, the single card reads better centered and not stretched wide. */
+/* In a room, the single card is capped so it does not stretch wide, and stays
+   left-aligned to match the lobby forms (which start from the left). */
 #room-view {
   max-width: 420px;
   width: 100%;
-  margin: 0 auto;
 }
 
 .card {
