@@ -119,6 +119,10 @@ function handleMessage(msg) {
     case "signal":
       handleSignal(msg.from, msg.payload);
       break;
+    case "room-closed":
+      leaveLocal();
+      showError(roomClosedText(msg.reason));
+      break;
     case "error":
       showError(errorText(msg.code, msg.message));
       break;
@@ -135,6 +139,12 @@ function errorText(code, fallback) {
     "room-full": "A sala está cheia.",
   };
   return map[code] || fallback || "Ocorreu um erro.";
+}
+
+function roomClosedText(reason) {
+  if (reason === "closed-by-admin") return "A sala foi fechada pelo admin.";
+  if (reason === "idle") return "A sala foi encerrada por inatividade.";
+  return "A sala foi encerrada.";
 }
 
 // --- WebRTC ----------------------------------------------------------------
@@ -253,6 +263,8 @@ async function startBroadcast() {
 
   showLocalPreview();
   updateBroadcastButton();
+  // Tell the server we are live, so the TTL reaper leaves this room alone.
+  send({ type: "broadcast-start" });
 
   for (const peerId of state.peers.keys()) {
     offerTo(peerId);
@@ -262,6 +274,8 @@ async function startBroadcast() {
 function stopBroadcast() {
   stopMedia();
   updateBroadcastButton();
+  // Back to idle: this restarts the room's TTL clock on the server.
+  send({ type: "broadcast-stop" });
 }
 
 // stopMedia tears down all media: local capture, every peer connection, and the

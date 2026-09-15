@@ -150,6 +150,20 @@ func (h *Hub) leaveRoom(c *Client) {
 	h.removeLocked(c)
 }
 
+// setBroadcasting records whether the room's broadcaster is actively sharing.
+// Only the broadcaster may flip it; the reaper leaves an actively broadcasting
+// room alone, and stopping restarts the idle clock (lastActive bumped).
+func (h *Hub) setBroadcasting(c *Client, on bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if c.room == nil || c.role != roleBroadcaster {
+		return
+	}
+	c.room.broadcasting = on
+	c.room.lastActive = time.Now()
+}
+
 // relay forwards a WebRTC signaling payload to another peer in the same room.
 func (h *Hub) relay(c *Client, in inbound) {
 	h.mu.Lock()
@@ -187,6 +201,64 @@ func (h *Hub) removeLocked(c *Client) {
 	room.lastActive = time.Now()
 	for _, other := range room.clients {
 		other.enqueue(peerLeftMsg{Type: "peer-left", PeerID: c.id})
+	}
+}
+
+// closeRoomLocked shuts a room down: it tells every participant the room is gone,
+// detaches them, and removes the room. Unlike removeLocked (one client leaving),
+// this ends the whole session. Caller must hold h.mu.
+func (h *Hub) closeRoomLocked(room *Room, reason string) {
+	for _, c := range room.clients {
+		c.enqueue(roomClosedMsg{Type: "room-closed", Reason: reason})
+		c.room = nil
+		c.role = ""
+	}
+	room.clients = nil
+	delete(h.rooms, room.ID)
+	log.Printf("[room] %s closed (%s)", room.ID, reason)
+}
+
+// StartReaper runs the idle-room sweep until ctx is cancelled. A TTL of zero or
+// less disables it. The tick is TTL/4 (clamped) so a room lives at most ~1.25×
+// TTL past going idle.
+func (h *Hub) StartReaper(ctx context.Context) {
+	ttl := time.Duration(h.cfg.RoomTTLMinutes) * time.Minute
+	if ttl <= 0 {
+		log.Println("[reaper] disabled (ROOM_TTL_MINUTES <= 0)")
+		return
+	}
+	interval := ttl / 4
+	if interval < 15*time.Second {
+		interval = 15 * time.Second
+	}
+
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case now := <-ticker.C:
+				h.reapIdle(now, ttl)
+			}
+		}
+	}()
+}
+
+// reapIdle closes every room that is not broadcasting and has been idle for at
+// least ttl. Deleting from the map while ranging over it is safe in Go.
+func (h *Hub) reapIdle(now time.Time, ttl time.Duration) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	for _, room := range h.rooms {
+		if room.broadcasting {
+			continue
+		}
+		if now.Sub(room.lastActive) >= ttl {
+			h.closeRoomLocked(room, reasonIdle)
+		}
 	}
 }
 

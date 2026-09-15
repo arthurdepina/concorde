@@ -5,6 +5,62 @@ leem este arquivo + o `Plano.md` antes de começar. Mais recente no topo.
 
 ---
 
+## Sessão 4 — TTL + tela de admin (2026-09-15)
+
+Branch: `session-2-rooms` (continuação).
+
+Duas entregas: salas ociosas se encerram sozinhas (TTL) e um **painel de admin**
+em `/admin.html` para ver as salas abertas e fechá-las na hora.
+
+**TTL (reaper de salas ociosas):**
+- `Room.broadcasting bool` novo: a sala fica **imune ao reaper enquanto o admin
+  está transmitindo**. O `lastActive` agora também é atualizado ao começar/parar
+  a transmissão, além das mudanças de participantes.
+- `Hub.StartReaper(ctx)` (chamado no `main`) roda um `time.Ticker` a cada `TTL/4`
+  (mínimo 15s) e chama `reapIdle`, que fecha toda sala **não transmitindo** e
+  ociosa há ≥ `ROOM_TTL_MINUTES` (default 10). TTL ≤ 0 desliga o reaper.
+- `closeRoomLocked(room, reason)`: novo caminho que encerra a sala inteira
+  (diferente do `removeLocked`, que tira um só participante). Notifica todos com
+  `room-closed {reason}`, desanexa e apaga a sala.
+- Regra prática: sala criada mas sem ninguém transmitindo por X min → fechada;
+  transmissão parada reinicia o relógio de X min.
+
+**Sinais de transmissão (frontend → servidor):** `broadcast-start` /
+`broadcast-stop` (só o broadcaster; ignorados de outros). O `app.js` os envia em
+`startBroadcast`/`stopBroadcast`. Servem só ao TTL — a mídia continua P2P.
+
+**Painel de admin (`/admin.html` + `admin.js`):**
+- Auth via **HTTP Basic** contra as credenciais de admin (`crypto/subtle` para
+  comparação em tempo constante). Login manda `Authorization: Basic …` em toda
+  request; nada é persistido além da aba (fica em memória).
+- Endpoints novos no `main`: `GET /admin/rooms` → `{rooms:[{id, participants,
+  broadcasting, createdAt, lastActive, idleSeconds}]}` (sem senhas), e
+  `POST /admin/rooms/close {roomId}` → 204 / 404. Ambos em `internal/signaling/
+  admin.go` (`ServeAdminRooms`, `ServeAdminClose`, `CloseRoom`, `snapshotRooms`).
+- Página lista as salas (mais nova primeiro), mostra 🔴 quem está transmitindo e
+  há quanto tempo cada uma está ociosa, com botão "Fechar" por sala e
+  auto-refresh a cada 5s. Link discreto "admin" no rodapé do `index.html`.
+
+**Frontend do usuário:** `app.js` trata `room-closed` (sai da sala e mostra o
+motivo: fechada pelo admin ou por inatividade).
+
+**Verificado:** `go build`/`vet`/`test ./...` limpos. Testes novos
+(`hub_test.go`): reaper fecha sala ociosa mas poupa a que transmite e a recém-
+criada; `room-closed(idle)` chega ao evictado; TTL 0 desliga; `/admin/rooms`
+exige auth, lista salas com auth; `/admin/rooms/close` despeja e notifica todos
+com `closed-by-admin`. Smoke test no servidor real (porta alternativa):
+`/healthz`, `/admin.html` (200), `/admin/rooms` 401 sem auth / `{"rooms":[]}`
+com auth, close de sala inexistente → 404.
+
+**Não verificado aqui (precisa de você, navegador real):** o painel visual em si
+e o encerramento por inatividade end-to-end — mesma limitação de sempre (sem
+navegador aqui). O núcleo é coberto pelos testes.
+
+**Próximo:** Sessão 5 — polimento e teste ponta a ponta (tema, confirmação do
+botão Transmitir, tela cheia para quem assiste, tratamento de erros).
+
+---
+
 ## Sessão 3 — Núcleo WebRTC (2026-09-13)
 
 Branch: `session-2-rooms` (continuação).

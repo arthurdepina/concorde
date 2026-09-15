@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"strconv"
@@ -15,11 +16,14 @@ import (
 func main() {
 	cfg := config.Load()
 	hub := signaling.New(cfg)
+	hub.StartReaper(context.Background())
 
 	mux := http.NewServeMux()
 	mux.Handle("/", http.FileServer(http.Dir("public")))
 	mux.HandleFunc("/healthz", handleHealth)
 	mux.HandleFunc("/ws", hub.ServeWS)
+	mux.HandleFunc("/admin/rooms", hub.ServeAdminRooms)
+	mux.HandleFunc("/admin/rooms/close", hub.ServeAdminClose)
 
 	addr := ":" + strconv.Itoa(cfg.Port)
 	log.Printf("Concorde running at http://localhost%s", addr)

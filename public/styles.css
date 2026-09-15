@@ -239,6 +239,18 @@ body {
 .statusbar {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+}
+
+.admin-link {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.admin-link:hover {
+  color: var(--text);
 }
 
 @media (max-width: 800px) {
@@ -248,6 +260,82 @@ body {
   .panel {
     width: 100%;
   }
+}
+
+/* --- admin panel --------------------------------------------------------- */
+
+.admin {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.admin__login {
+  max-width: 360px;
+}
+
+.admin__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.admin__table-wrap {
+  overflow-x: auto;
+}
+
+.admin__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.admin__table th,
+.admin__table td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.admin__table th {
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+
+.admin__table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.admin__code {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--accent-hover);
+}
+
+.btn-danger {
+  padding: 6px 14px;
+  font-size: 0.85rem;
+}
+
+.btn-danger:hover {
+  border-color: #d4756b;
+  color: #d4756b;
+}
+
+.btn-danger:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Anchor styled as a button needs its text centered and undecorated. */
+a.btn-secondary {
+  text-decoration: none;
+  display: inline-block;
 }
 
 .status {

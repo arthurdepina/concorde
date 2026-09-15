@@ -11,8 +11,13 @@ type Room struct {
 
 	clients map[string]*Client
 
+	// broadcasting is true while the broadcaster is actively sharing a tab. An
+	// actively broadcasting room is never reaped, no matter how old lastActive is.
+	broadcasting bool
+
 	createdAt time.Time
-	// lastActive is bumped whenever membership changes. Session 4 uses it to
-	// close idle rooms (TTL); for now it is only recorded.
+	// lastActive is bumped whenever membership changes or the broadcast is
+	// started/stopped. The TTL reaper closes a room that has gone this long
+	// without anyone broadcasting (see Hub.reapIdle).
 	lastActive time.Time
 }

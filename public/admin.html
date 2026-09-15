@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Concorde — admin</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="topbar">
+        <h1 class="brand">Concorde · admin</h1>
+        <a class="btn-secondary" href="/">← Voltar</a>
+      </header>
+
+      <section class="admin">
+        <!-- Shown until the admin logs in. -->
+        <form id="login-form" class="card admin__login">
+          <h2 class="card__title">Entrar como admin</h2>
+          <input id="admin-user" class="field" type="text"
+                 placeholder="Usuário admin" autocomplete="username" />
+          <input id="admin-pass" class="field" type="password"
+                 placeholder="Senha admin" autocomplete="current-password" />
+          <button class="btn-primary" type="submit">Entrar</button>
+          <p id="login-error" class="error" hidden></p>
+        </form>
+
+        <!-- Shown after login. -->
+        <div id="dashboard" class="card admin__dashboard" hidden>
+          <div class="admin__head">
+            <h2 class="card__title">Salas abertas</h2>
+            <button id="refresh-btn" class="btn-secondary" type="button">
+              Atualizar
+            </button>
+          </div>
+          <p id="empty" class="placeholder" hidden>Nenhuma sala aberta.</p>
+          <div class="admin__table-wrap">
+            <table id="rooms-table" class="admin__table" hidden>
+              <thead>
+                <tr>
+                  <th>Código</th>
+                  <th>Pessoas</th>
+                  <th>Transmitindo</th>
+                  <th>Ociosa</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="rooms-body"></tbody>
+            </table>
+          </div>
+          <p id="dash-error" class="error" hidden></p>
+        </div>
+      </section>
+
+      <footer class="statusbar">
+        <span id="refresh-status" class="status status--off">—</span>
+      </footer>
+    </main>
+
+    <script src="/admin.js" type="module"></script>
+  </body>
+</html>

@@ -69,6 +69,10 @@ func (c *Client) readLoop(ctx context.Context) {
 			c.hub.joinRoom(c, msg)
 		case "signal":
 			c.hub.relay(c, msg)
+		case "broadcast-start":
+			c.hub.setBroadcasting(c, true)
+		case "broadcast-stop":
+			c.hub.setBroadcasting(c, false)
 		case "leave-room":
 			c.hub.leaveRoom(c)
 		default:

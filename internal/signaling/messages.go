@@ -85,6 +85,20 @@ type peerLeftMsg struct {
 	PeerID string `json:"peerId"`
 }
 
+// roomClosedMsg tells everyone in a room that it is gone: either reaped for being
+// idle too long or shut down from the admin panel. The reason is a stable code
+// the frontend can branch on ("idle" | "closed-by-admin").
+type roomClosedMsg struct {
+	Type   string `json:"type"`
+	Reason string `json:"reason"`
+}
+
+// Reasons a room can close, sent in roomClosedMsg.
+const (
+	reasonIdle    = "idle"
+	reasonByAdmin = "closed-by-admin"
+)
+
 // signalMsg relays a WebRTC payload from one peer to another, tagged with the
 // sender so the receiver knows who to answer.
 type signalMsg struct {
