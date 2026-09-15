@@ -9,6 +9,9 @@
   --accent-hover: #4a82c0;
   --ok: #4a9d6b;
   --off: #6b7280;
+  --danger: #b4453b;
+  --danger-hover: #c85449;
+  --error-text: #d4756b;
 }
 
 * {
@@ -107,7 +110,8 @@ body {
   background: #000;
 }
 
-/* Volume bar floats over the bottom of the video, fading in on hover. */
+/* Controls bar floats over the bottom of the video, fading in on hover:
+   volume on the left, fullscreen on the right. */
 .video-controls {
   position: absolute;
   left: 0;
@@ -117,11 +121,48 @@ body {
   background: linear-gradient(to top, rgba(0, 0, 0, 0.6), transparent);
   opacity: 0;
   transition: opacity 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+/* An explicit `display` above would otherwise beat the [hidden] attribute the
+   broadcaster preview toggles, leaving the (viewer-only) controls on screen. */
+.video-controls[hidden] {
+  display: none;
 }
 
 .video-window:hover .video-controls,
 .video-controls:focus-within {
   opacity: 1;
+}
+
+/* Fully visible while in fullscreen so the controls are always reachable. */
+.video-window:fullscreen .video-controls {
+  opacity: 1;
+}
+
+.icon-btn {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.icon-btn:hover {
+  background: rgba(0, 0, 0, 0.65);
+  border-color: rgba(255, 255, 255, 0.5);
 }
 
 .volume {
@@ -199,7 +240,7 @@ body {
 }
 
 .error {
-  color: #d4756b;
+  color: var(--error-text);
   font-size: 0.85rem;
 }
 
@@ -323,8 +364,8 @@ body {
 }
 
 .btn-danger:hover {
-  border-color: #d4756b;
-  color: #d4756b;
+  border-color: var(--error-text);
+  color: var(--error-text);
 }
 
 .btn-danger:disabled {
@@ -351,4 +392,164 @@ a.btn-secondary {
 
 .status--on {
   color: var(--ok);
+}
+
+/* --- broadcast button live state ----------------------------------------- */
+
+/* Once live, the button becomes a clearly different "stop" affordance. */
+.btn-primary.is-live {
+  background: var(--danger);
+}
+
+.btn-primary.is-live:hover {
+  background: var(--danger-hover);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* --- browser warning banner ---------------------------------------------- */
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--danger);
+  border-radius: 10px;
+  background: rgba(180, 69, 59, 0.12);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.banner[hidden] {
+  display: none;
+}
+
+.banner__text {
+  flex: 1;
+}
+
+.banner__close {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.banner__close:hover {
+  color: var(--text);
+}
+
+/* --- fullscreen ----------------------------------------------------------- */
+
+/* In fullscreen the window fills the screen; drop the framing so the video
+   (object-fit: contain) letterboxes cleanly on black. */
+.video-window:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  border: none;
+  border-radius: 0;
+  aspect-ratio: auto;
+}
+
+/* --- dialogs -------------------------------------------------------------- */
+
+.dialog {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  padding: 20px;
+  max-width: 420px;
+  width: calc(100% - 32px);
+}
+
+.dialog::backdrop {
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.dialog__title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.dialog__body {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin-bottom: 18px;
+}
+
+.dialog__body strong {
+  color: var(--text);
+}
+
+.dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* --- toasts --------------------------------------------------------------- */
+
+.toasts {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 0.88rem;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  animation: toast-in 0.15s ease;
+}
+
+.toast--error {
+  border-color: var(--danger);
+}
+
+.toast--info {
+  border-color: var(--accent);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* --- focus visibility ----------------------------------------------------- */
+
+button:focus-visible,
+a:focus-visible,
+input[type="range"]:focus-visible {
+  outline: 2px solid var(--accent-hover);
+  outline-offset: 2px;
 }

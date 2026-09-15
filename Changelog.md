@@ -5,6 +5,71 @@ leem este arquivo + o `Plano.md` antes de começar. Mais recente no topo.
 
 ---
 
+## Sessão 5 — Polimento e teste ponta a ponta (2026-09-15)
+
+Branch: `main`.
+
+Fecha a **Fase A**: a primeira versão que dá pra ver rodando. Todo o trabalho é
+de UX e robustez do frontend — o backend não mudou.
+
+**Tela cheia (para quem assiste):** botão ⛶ na barra de controles do vídeo (só
+aparece para o viewer, ao lado do volume). Usa a Fullscreen API na **janela do
+vídeo inteira** (`#video-window`), não só no `<video>`, para os controles
+continuarem acessíveis em tela cheia (a barra fica sempre visível em fullscreen).
+A `aspect-ratio` é removida em fullscreen e o vídeo faz letterbox no preto
+(`object-fit: contain`). `fullscreenchange` sincroniza o rótulo/`aria-label` do
+botão; Esc sai (nativo).
+
+**Confirmação no botão Transmitir:** os dois caminhos passam por um `<dialog>`
+nativo (on-theme, com `::backdrop`):
+- Antes de **começar**: lembrete para escolher uma **aba** e marcar
+  "Compartilhar áudio da aba" — a causa mais comum de transmissão sem som. O
+  `getDisplayMedia` é chamado no clique de "Continuar", preservando o gesto do
+  usuário (a chamada não pode vir depois de um `await`).
+- Antes de **parar**: confirmação, já que parar encerra a transmissão para todos.
+
+O botão também ganha um estado visual "ao vivo" vermelho (`.is-live`) enquanto
+transmite.
+
+**Tratamento de erros:**
+- **Aviso de navegador:** banner dispensável no topo para quem não está no
+  Chrome/Edge (Firefox/Opera são avisados sobre possível falta de áudio, como o
+  plano pede). Detecção por `navigator.userAgentData.brands` (exclui "Opera"
+  explicitamente; aceita "Google Chrome"/"Microsoft Edge"), com fallback por UA
+  string quando UA-CH não existe (ex.: Firefox).
+- **Toasts** (`#toasts`, `aria-live`): avisos transitórios e independentes de
+  tela para — falha ao iniciar a captura; captura indisponível (origem insegura
+  ou sem suporte, via guarda `navigator.mediaDevices?.getDisplayMedia`); conexão
+  P2P falha (só para o viewer, que sem ela fica sem nada na tela); conexão com o
+  servidor perdida; e **sala encerrada** (antes ia para o erro do lobby, agora é
+  toast). Erros de formulário (admin/senha/sala) seguem inline no lobby via
+  `showError`.
+
+**Polimento de tema:** `:focus-visible` para navegação por teclado, o estado
+`.is-live`, e estilos on-theme para banner, diálogos e toasts. Novas CSS vars
+`--danger`/`--danger-hover`/`--error-text` (a cor de erro que já existia virou
+variável e foi reaproveitada no `.error` e no `.btn-danger`).
+
+**Detalhe de CSS:** `.video-controls` virou flex (volume à esquerda, tela cheia
+à direita); como isso adiciona um `display` explícito, foi preciso um
+`.video-controls[hidden] { display: none }` para o atributo `hidden` (que o
+preview do broadcaster usa) continuar escondendo a barra — mesmo cuidado que já
+existia no `.panel__view`.
+
+**Verificado:** `go build`/`vet`/`test ./...` limpos (backend intacto);
+`node --check` nos dois JS; smoke test do servidor em porta alternativa — index
+servido já com `#browser-warning`, `#fullscreen-btn`, `#start-dialog`,
+`#stop-dialog` e `#toasts`; CSS e JS servidos com as peças novas; `/healthz` ok.
+
+**Não verificado aqui (precisa de você, navegador real):** o visual em si e o
+fluxo ponta a ponta — tela cheia, os dois diálogos, a captura de áudio da aba e
+a transmissão P2P. Mesma limitação de sempre (sem navegador aqui).
+
+**Próximo:** Fase B — você roda localmente, vê a primeira versão e me passa o
+feedback. O passo a passo de teste está no `Plano.md`.
+
+---
+
 ## Sessão 4 — TTL + tela de admin (2026-09-15)
 
 Branch: `session-2-rooms` (continuação).

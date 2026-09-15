@@ -8,6 +8,17 @@
   </head>
   <body>
     <main class="app">
+      <!-- Non-Chromium browsers get a heads-up: tab audio is only verified on
+           Chrome/Edge (see Plano.md). Hidden by default; app.js reveals it. -->
+      <div id="browser-warning" class="banner" role="alert" hidden>
+        <span class="banner__text">
+          Testado no Chrome e no Edge. Em outros navegadores, o áudio da
+          transmissão pode não funcionar.
+        </span>
+        <button id="browser-warning-close" class="banner__close" type="button"
+                aria-label="Dispensar aviso">×</button>
+      </div>
+
       <header class="topbar">
         <h1 class="brand">Concorde</h1>
         <button id="broadcast-btn" class="btn-primary" type="button">
@@ -27,6 +38,8 @@
               <input id="volume" class="volume__slider" type="range"
                      min="0" max="100" value="100" aria-label="Volume" />
             </label>
+            <button id="fullscreen-btn" class="icon-btn" type="button"
+                    aria-label="Tela cheia" title="Tela cheia">⛶</button>
           </div>
         </div>
 
@@ -76,6 +89,42 @@
         <span id="conn-status" class="status status--off">desconectado</span>
       </footer>
     </main>
+
+    <!-- Confirm before capturing: picking a screen/window instead of a tab (or
+         forgetting "share tab audio") is the usual reason there is no sound. -->
+    <dialog id="start-dialog" class="dialog">
+      <h2 class="dialog__title">Transmitir</h2>
+      <p class="dialog__body">
+        Na janela que vai abrir, escolha a <strong>aba</strong> do vídeo e marque
+        <strong>“Compartilhar áudio da aba”</strong> — senão os amigos não ouvem
+        o som.
+      </p>
+      <div class="dialog__actions">
+        <button id="start-cancel" class="btn-secondary" type="button">
+          Cancelar
+        </button>
+        <button id="start-confirm" class="btn-primary" type="button">
+          Continuar
+        </button>
+      </div>
+    </dialog>
+
+    <!-- Confirm before stopping: this ends the stream for everyone at once. -->
+    <dialog id="stop-dialog" class="dialog">
+      <h2 class="dialog__title">Parar transmissão</h2>
+      <p class="dialog__body">Isso encerra a transmissão para todos na sala.</p>
+      <div class="dialog__actions">
+        <button id="stop-cancel" class="btn-secondary" type="button">
+          Cancelar
+        </button>
+        <button id="stop-confirm" class="btn-primary is-live" type="button">
+          Parar
+        </button>
+      </div>
+    </dialog>
+
+    <!-- View-independent, transient notices (capture/connection errors, etc.). -->
+    <div id="toasts" class="toasts" aria-live="polite"></div>
 
     <script src="/app.js" type="module"></script>
   </body>

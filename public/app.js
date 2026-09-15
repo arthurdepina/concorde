@@ -25,9 +25,20 @@ const els = {
   peerList: document.getElementById("peer-list"),
   leaveBtn: document.getElementById("leave-btn"),
   video: document.getElementById("video"),
+  videoWindow: document.getElementById("video-window"),
   videoPlaceholder: document.getElementById("video-placeholder"),
   videoControls: document.getElementById("video-controls"),
   volume: document.getElementById("volume"),
+  fullscreenBtn: document.getElementById("fullscreen-btn"),
+  browserWarning: document.getElementById("browser-warning"),
+  browserWarningClose: document.getElementById("browser-warning-close"),
+  startDialog: document.getElementById("start-dialog"),
+  startConfirm: document.getElementById("start-confirm"),
+  startCancel: document.getElementById("start-cancel"),
+  stopDialog: document.getElementById("stop-dialog"),
+  stopConfirm: document.getElementById("stop-confirm"),
+  stopCancel: document.getElementById("stop-cancel"),
+  toasts: document.getElementById("toasts"),
 };
 
 const ROLE_LABEL = { broadcaster: "quem transmite", viewer: "quem assiste" };
@@ -70,8 +81,10 @@ function connectSignaling() {
 
   socket.addEventListener("open", () => setConnected(true));
   socket.addEventListener("close", () => {
+    const wasInRoom = state.roomId !== null;
     setConnected(false);
     leaveLocal();
+    if (wasInRoom) showToast("Conexão com o servidor perdida.", "error");
   });
   socket.addEventListener("error", () => setConnected(false));
   socket.addEventListener("message", (event) => {
@@ -121,7 +134,7 @@ function handleMessage(msg) {
       break;
     case "room-closed":
       leaveLocal();
-      showError(roomClosedText(msg.reason));
+      showToast(roomClosedText(msg.reason), "info");
       break;
     case "error":
       showError(errorText(msg.code, msg.message));
@@ -167,6 +180,12 @@ function createPeerConnection(peerId) {
   pc.addEventListener("connectionstatechange", () => {
     if (pc.connectionState === "failed") {
       console.warn("[rtc] connection to", peerId, "failed");
+      // A viewer has a single connection (to the broadcaster); if it fails there
+      // is nothing left on screen, so it is worth surfacing. For the broadcaster,
+      // one viewer dropping is not worth a popup.
+      if (state.role === "viewer") {
+        showToast("Falha na conexão com quem transmite.");
+      }
     }
   });
 
@@ -246,14 +265,22 @@ async function flushCandidates(pc) {
 
 // startBroadcast captures a tab and streams it to every viewer in the room.
 async function startBroadcast() {
+  // getDisplayMedia is missing on insecure origins (non-HTTPS, non-localhost)
+  // and on browsers that do not support screen capture at all.
+  if (!navigator.mediaDevices?.getDisplayMedia) {
+    showToast("Captura de tela indisponível aqui (precisa de HTTPS ou localhost).");
+    return;
+  }
+
   let stream;
   try {
     stream = await navigator.mediaDevices.getDisplayMedia(CAPTURE);
   } catch (err) {
-    // Most often the user just cancelled the picker; nothing to report.
-    if (err?.name !== "NotAllowedError") {
-      console.error("[rtc] getDisplayMedia failed:", err);
-    }
+    // NotAllowedError is almost always the user cancelling the picker; stay quiet
+    // in that case and only report genuine failures.
+    if (err?.name === "NotAllowedError") return;
+    console.error("[rtc] getDisplayMedia failed:", err);
+    showToast("Não foi possível iniciar a captura de tela.");
     return;
   }
 
@@ -375,11 +402,11 @@ function leaveLocal() {
 // The broadcast button only makes sense for the room's broadcaster.
 function updateBroadcastButton() {
   const isBroadcaster = state.role === "broadcaster";
+  const live = Boolean(state.localStream);
   els.broadcastBtn.hidden = !isBroadcaster;
+  els.broadcastBtn.classList.toggle("is-live", live);
   if (isBroadcaster) {
-    els.broadcastBtn.textContent = state.localStream
-      ? "Parar transmissão"
-      : "Transmitir";
+    els.broadcastBtn.textContent = live ? "Parar transmissão" : "Transmitir";
   }
 }
 
@@ -405,6 +432,65 @@ function showError(text) {
 
 function clearError() {
   els.lobbyError.hidden = true;
+}
+
+// --- toasts ----------------------------------------------------------------
+
+// Transient, view-independent notices (capture failures, dropped connection, a
+// room closing). Form-field problems stay inline in the lobby via showError.
+function showToast(text, kind = "error") {
+  const el = document.createElement("div");
+  el.className = `toast toast--${kind}`;
+  el.setAttribute("role", kind === "error" ? "alert" : "status");
+  el.textContent = text;
+  els.toasts.appendChild(el);
+  setTimeout(() => el.remove(), 6000);
+}
+
+// --- browser support -------------------------------------------------------
+
+// We only verify tab audio on Chrome/Edge (see Plano.md). Everything else gets a
+// non-blocking warning. Opera is Chromium-based but still flagged, so we match
+// the Chrome/Edge brands specifically and exclude Opera.
+function isSupportedBrowser() {
+  const brands = navigator.userAgentData?.brands;
+  if (brands?.length) {
+    const names = brands.map((b) => b.brand);
+    if (names.includes("Opera")) return false;
+    return names.includes("Google Chrome") || names.includes("Microsoft Edge");
+  }
+  // Fallback for browsers without UA Client Hints (e.g. Firefox).
+  const ua = navigator.userAgent;
+  if (/OPR\//.test(ua) || /Firefox\//.test(ua)) return false;
+  return /Edg\//.test(ua) || /Chrome\//.test(ua);
+}
+
+function maybeWarnBrowser() {
+  if (!isSupportedBrowser()) {
+    els.browserWarning.hidden = false;
+  }
+}
+
+// --- fullscreen ------------------------------------------------------------
+
+// Viewers can blow the stream up to the whole screen. We fullscreen the whole
+// video window (not just the <video>) so the volume/fullscreen controls stay
+// reachable while in fullscreen.
+function toggleFullscreen() {
+  if (document.fullscreenElement) {
+    document.exitFullscreen().catch(() => {});
+  } else {
+    els.videoWindow.requestFullscreen?.().catch(() => {});
+  }
+}
+
+function syncFullscreenButton() {
+  const on = document.fullscreenElement === els.videoWindow;
+  els.fullscreenBtn.setAttribute(
+    "aria-label",
+    on ? "Sair da tela cheia" : "Tela cheia",
+  );
+  els.fullscreenBtn.title = on ? "Sair da tela cheia" : "Tela cheia";
 }
 
 // --- events ----------------------------------------------------------------
@@ -435,13 +521,34 @@ els.leaveBtn.addEventListener("click", () => {
   leaveLocal();
 });
 
+// The broadcast button routes through a confirmation dialog either way: a
+// reminder to share a tab with audio before starting, and a guard before
+// stopping (which cuts the stream for everyone).
 els.broadcastBtn.addEventListener("click", () => {
   if (state.role !== "broadcaster") return;
   if (state.localStream) {
-    stopBroadcast();
+    els.stopDialog.showModal();
   } else {
-    startBroadcast();
+    els.startDialog.showModal();
   }
+});
+
+els.startCancel.addEventListener("click", () => els.startDialog.close());
+els.startConfirm.addEventListener("click", () => {
+  els.startDialog.close();
+  startBroadcast();
+});
+els.stopCancel.addEventListener("click", () => els.stopDialog.close());
+els.stopConfirm.addEventListener("click", () => {
+  els.stopDialog.close();
+  stopBroadcast();
+});
+
+els.fullscreenBtn.addEventListener("click", toggleFullscreen);
+document.addEventListener("fullscreenchange", syncFullscreenButton);
+
+els.browserWarningClose.addEventListener("click", () => {
+  els.browserWarning.hidden = true;
 });
 
 els.volume.addEventListener("input", () => {
@@ -451,4 +558,5 @@ els.volume.addEventListener("input", () => {
 // Hidden until we know we are a room's broadcaster.
 els.broadcastBtn.hidden = true;
 
+maybeWarnBrowser();
 connectSignaling();
