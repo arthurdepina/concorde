@@ -197,6 +197,32 @@ func TestSignalRelay(t *testing.T) {
 	}
 }
 
+func TestBroadcastStopNotifiesViewers(t *testing.T) {
+	url := newTestServer(t)
+	admin := dial(t, url)
+	admin.write(map[string]any{"type": "create-room", "user": "admin", "password": "secret", "roomPassword": "pw"})
+	created := admin.expect("room-created")
+	roomID := created["roomId"].(string)
+	adminID := created["selfId"].(string)
+
+	friend := dial(t, url)
+	friend.write(map[string]any{"type": "join-room", "roomId": roomID, "roomPassword": "pw"})
+	friend.expect("joined")
+	admin.expect("peer-joined")
+
+	// Going live relays nothing to viewers (the offer itself carries the start),
+	// so the next thing the friend sees must be the stop notice that follows.
+	admin.write(map[string]any{"type": "broadcast-start"})
+	admin.write(map[string]any{"type": "broadcast-stop"})
+	friend.expect("broadcast-stopped")
+
+	// The broadcaster is not notified of its own stop: a signal the friend sends
+	// now must be the very next thing the admin reads. A stray broadcast-stopped
+	// would sit ahead of it in the queue and fail this expectation.
+	friend.write(map[string]any{"type": "signal", "to": adminID, "payload": json.RawMessage(`{"k":"v"}`)})
+	admin.expect("signal")
+}
+
 func TestPeerLeftOnDisconnect(t *testing.T) {
 	url := newTestServer(t)
 	admin := dial(t, url)

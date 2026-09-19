@@ -162,6 +162,19 @@ func (h *Hub) setBroadcasting(c *Client, on bool) {
 	}
 	c.room.broadcasting = on
 	c.room.lastActive = time.Now()
+
+	// A deliberate stop gets relayed to the viewers so they can close their peer
+	// connection right away, before it decays into "failed" and shows them a
+	// connection-error toast. Starting needs no relay: the offer itself reaches
+	// each viewer.
+	if !on {
+		for _, other := range c.room.clients {
+			if other.id == c.id {
+				continue
+			}
+			other.enqueue(broadcastStoppedMsg{Type: "broadcast-stopped"})
+		}
+	}
 }
 
 // relay forwards a WebRTC signaling payload to another peer in the same room.

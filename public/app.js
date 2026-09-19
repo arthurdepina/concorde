@@ -126,6 +126,9 @@ function handleMessage(msg) {
     case "signal":
       handleSignal(msg.from, msg.payload);
       break;
+    case "broadcast-stopped":
+      handleBroadcastStopped();
+      break;
     case "room-closed":
       leaveLocal();
       showToast(roomClosedText(msg.reason), "info");
@@ -332,6 +335,17 @@ function closePeer(peerId) {
   if (state.role === "viewer" && state.pcs.size === 0) {
     hideVideo();
   }
+}
+
+// The broadcaster stopped sharing on purpose (server relayed broadcast-stopped).
+// Close our side right away — a connection we close reports "closed", not
+// "failed", so this sidesteps the connection-lost toast an idle-then-failed
+// connection would raise. The broadcaster stays in the room, so a later restart
+// just brings a fresh offer.
+function handleBroadcastStopped() {
+  if (state.role !== "viewer") return;
+  stopMedia();
+  showToast("A transmissão foi encerrada.", "info");
 }
 
 // --- video display ---------------------------------------------------------

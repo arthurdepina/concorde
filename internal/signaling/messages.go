@@ -106,3 +106,11 @@ type signalMsg struct {
 	From    string          `json:"from"`
 	Payload json.RawMessage `json:"payload"`
 }
+
+// broadcastStoppedMsg tells the viewers the broadcaster stopped sharing on
+// purpose, so they can tear their peer connection down cleanly instead of
+// waiting for it to decay into "failed" — which would otherwise look like a
+// connection error for what is a normal stop.
+type broadcastStoppedMsg struct {
+	Type string `json:"type"`
+}

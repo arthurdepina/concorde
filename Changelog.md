@@ -5,6 +5,47 @@ leem este arquivo + o `Plano.md` antes de começar. Mais recente no topo.
 
 ---
 
+## Sessão 10 — Parada de transmissão limpa para os viewers (Fase B) (2026-09-19)
+
+Branch: `main`. Backend (Go) + frontend (JS).
+
+Fecha o item que a Sessão 9 deixou em aberto: quando o broadcaster parava
+normalmente, o viewer só percebia pela conexão ICE decaindo para `failed` alguns
+segundos depois, o que disparava o toast "Falha na conexão com quem transmite" —
+assustador para uma parada normal. Agora a parada é avisada e o viewer derruba a
+conexão de forma limpa, sem erro.
+
+**Servidor (`internal/signaling/`):**
+- Novo `broadcastStoppedMsg` (`{type:"broadcast-stopped"}`) em `messages.go` —
+  notificação server→cliente, no mesmo padrão de tempo-passado de
+  `peer-left`/`room-closed`.
+- `setBroadcasting` (`hub.go`), ao receber `broadcast-stop`, agora **relaya
+  `broadcast-stopped` aos demais participantes** da sala (todos menos o próprio
+  broadcaster). Já está sob o lock e com a sala em mãos, então é só um range
+  sobre `room.clients`. `broadcast-start` não relaya nada — a própria offer já
+  chega a cada viewer.
+
+**Frontend (`public/app.js`):**
+- Novo `case "broadcast-stopped"` → `handleBroadcastStopped`: para os viewers,
+  chama `stopMedia()` (fecha as PCs — uma conexão que **nós** fechamos reporta
+  `closed`, não `failed`, então o toast de falha não dispara) e mostra um toast
+  **informativo** "A transmissão foi encerrada." no lugar do erro. O broadcaster
+  continua na sala, então um recomeço só traz uma offer nova (compõe com a
+  correção da Sessão 9, que já troca a PC velha pela nova ao receber outra offer).
+
+**Verificado:** `go build`/`vet`/`test ./...` limpos; teste novo
+`TestBroadcastStopNotifiesViewers` (o viewer recebe `broadcast-stopped` no stop;
+`broadcast-start` não relaya nada; o broadcaster não é notificado do próprio stop
+— tudo por ordenação de mensagens, sem timeouts). `node --check` nos dois JS ok.
+Smoke test do servidor (porta alternativa): `/healthz` ok, index 200, `app.js`
+200 já com o `case` e o handler novos.
+
+**Não verificado aqui (precisa de você, navegador real):** confirmar que parar a
+transmissão não gera mais o toast de erro no viewer, e sim o aviso "A transmissão
+foi encerrada." — mesma limitação de sempre (sem navegador aqui).
+
+---
+
 ## Sessão 9 — Revisão e limpeza de código (2026-09-15)
 
 Branch: `main`. Sem feedback visual novo nesta rodada — passada de qualidade no
