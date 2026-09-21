@@ -37,7 +37,14 @@ func New(cfg config.Config) *Hub {
 // ServeWS upgrades an HTTP request to a WebSocket and runs the client until it
 // disconnects. Wire it up as the /ws handler.
 func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
-	conn, err := websocket.Accept(w, r, nil)
+	// With no AllowedOrigins the library enforces same-origin (the safe local
+	// default). Behind a tunnel/proxy that may not preserve the Host header, the
+	// configured public hosts are accepted so browser WebSockets aren't rejected.
+	var opts *websocket.AcceptOptions
+	if len(h.cfg.AllowedOrigins) > 0 {
+		opts = &websocket.AcceptOptions{OriginPatterns: h.cfg.AllowedOrigins}
+	}
+	conn, err := websocket.Accept(w, r, opts)
 	if err != nil {
 		log.Println("[ws] accept:", err)
 		return

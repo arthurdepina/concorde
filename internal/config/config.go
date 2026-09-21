@@ -23,6 +23,12 @@ type Config struct {
 
 	// Broadcaster + viewers. P2P mesh stays cheap only with small rooms.
 	MaxParticipants int
+
+	// Hostnames allowed as the WebSocket Origin. Empty means same-origin only
+	// (the safe default for local dev). Behind a reverse proxy or tunnel that may
+	// not preserve the Host header, set this to the public host(s), e.g.
+	// "share.example.com", so the browser origin is accepted.
+	AllowedOrigins []string
 }
 
 // Load reads configuration, applying defaults for anything unset.
@@ -35,6 +41,7 @@ func Load() Config {
 		AdminPassword:   envStr("ADMIN_PASSWORD", "change-me"),
 		RoomTTLMinutes:  envInt("ROOM_TTL_MINUTES", 10),
 		MaxParticipants: envInt("MAX_PARTICIPANTS", 3),
+		AllowedOrigins:  envList("ALLOWED_ORIGINS"),
 	}
 }
 
@@ -52,6 +59,22 @@ func envInt(key string, fallback int) int {
 		}
 	}
 	return fallback
+}
+
+// envList reads a comma-separated environment variable into a slice, trimming
+// spaces and dropping empty entries. An unset or blank value yields nil.
+func envList(key string) []string {
+	v, ok := os.LookupEnv(key)
+	if !ok {
+		return nil
+	}
+	var out []string
+	for _, part := range strings.Split(v, ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }
 
 // loadDotEnv reads simple KEY=VALUE lines from a .env file into the process

@@ -15,6 +15,9 @@ import (
 
 func main() {
 	cfg := config.Load()
+	if cfg.AdminPassword == "change-me" {
+		log.Println("WARNING: ADMIN_PASSWORD is still the default 'change-me' — set a strong password before exposing this server.")
+	}
 	hub := signaling.New(cfg)
 	hub.StartReaper(context.Background())
 

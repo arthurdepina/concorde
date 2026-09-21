@@ -247,6 +247,33 @@ func newHub() *Hub {
 	return New(config.Config{AdminUser: "admin", AdminPassword: "secret", MaxParticipants: 3})
 }
 
+// TestWebSocketOriginCheck guards the deploy-critical behavior: same-origin by
+// default (a stray browser origin is refused), but a configured public host is
+// accepted so the WebSocket survives behind a tunnel/proxy.
+func TestWebSocketOriginCheck(t *testing.T) {
+	crossOrigin := &websocket.DialOptions{HTTPHeader: http.Header{"Origin": {"https://elsewhere.example"}}}
+
+	// Default (no AllowedOrigins): cross-origin request is rejected.
+	srv := httptest.NewServer(http.HandlerFunc(newHub().ServeWS))
+	defer srv.Close()
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http")
+	if conn, _, err := websocket.Dial(context.Background(), wsURL, crossOrigin); err == nil {
+		conn.Close(websocket.StatusNormalClosure, "")
+		t.Fatal("expected cross-origin dial to be rejected by same-origin default")
+	}
+
+	// With the origin allow-listed, the same request connects.
+	hub := New(config.Config{AllowedOrigins: []string{"elsewhere.example"}})
+	srv2 := httptest.NewServer(http.HandlerFunc(hub.ServeWS))
+	defer srv2.Close()
+	wsURL2 := "ws" + strings.TrimPrefix(srv2.URL, "http")
+	conn, _, err := websocket.Dial(context.Background(), wsURL2, crossOrigin)
+	if err != nil {
+		t.Fatalf("expected allow-listed origin to connect: %v", err)
+	}
+	conn.Close(websocket.StatusNormalClosure, "")
+}
+
 // TestReapIdleDirect drives the reaper against a hub it owns, so it can age a
 // room and inject a fake broadcaster without a real socket.
 func TestReapIdleDirect(t *testing.T) {

@@ -5,6 +5,64 @@ leem este arquivo + o `Plano.md` antes de começar. Mais recente no topo.
 
 ---
 
+## Sessão 11 — Deploy: `concorde.example.com` no ar (Fase C) (2026-09-21)
+
+Branch: `main`. Primeira parte da Fase C: o serviço está **público e com HTTPS**
+em `concorde.example.com`, hospedado de casa via **Cloudflare Tunnel**.
+
+**Decisões (Fase C):**
+- **Host:** casa + **Cloudflare Tunnel** (grátis; o servidor Go roda como está e o
+  `cloudflared` expõe pela borda da Cloudflare, sem abrir porta no roteador). É um
+  estágio até o host dedicado (Raspberry Pi) — migrar depois é trivial (mesmo
+  binário; roda o mesmo `cloudflared` no destino).
+- **Endereço:** `concorde.example.com` (subdomínio na zona já existente). O
+  `share.example.com` chegou a ser criado e depois **descartado** (fora do
+  ingress); o CNAME órfão pode ser apagado no painel quando quiser.
+- **TURN:** segue **sem** (só STUN), como planejado.
+
+**Código (blindagem pra ficar exposto):**
+- `ALLOWED_ORIGINS` configurável (`config.go` + `hub.go`): a checagem de origem
+  do WebSocket deixa de ser só same-origin. Vazio = same-origin (default seguro
+  do dev); em produção, `ALLOWED_ORIGINS=concorde.example.com` faz a origem do
+  navegador ser aceita mesmo se o proxy/túnel não preservar o `Host` — sem isso o
+  `websocket.Accept` rejeitaria com 403 e derrubaria toda a sinalização.
+- `main.go`: aviso no startup se `ADMIN_PASSWORD` ainda for o default `change-me`.
+- `.env.example` documenta `ALLOWED_ORIGINS`; `.gitignore` ignora `rascunhos.md`.
+- Teste novo `TestWebSocketOriginCheck`: origem estranha é recusada por padrão e
+  a origem da allow-list conecta.
+
+**Infra (fora do repo — na máquina/na conta Cloudflare):**
+- `cloudflared` instalado via winget (v2026.9.1), em
+  `C:\Program Files (x86)\cloudflared\`.
+- Túnel **locally-managed** `concorde` criado (`cloudflared tunnel create`), com
+  credenciais e `config.yml` em `%USERPROFILE%\.cloudflared\`. Ingress:
+  `concorde.example.com` → `http://localhost:3000`, resto → 404.
+- DNS: CNAME criado via `cloudflared tunnel route dns concorde
+  concorde.example.com`; SSL automático da Cloudflare.
+
+**Verificado:** `go build`/`vet`/`test ./...` limpos. Pela borda pública:
+`/healthz` 200, index 200, e **WebSocket** `wss://concorde.example.com/ws` com a
+origem de produção recebendo o `hello` — HTTPS + WS + allow-list de origem todos
+funcionando pelo túnel. **Teste ponta a ponta no navegador passou (confirmado por
+você):** vídeo + áudio + P2P entre redes diferentes.
+
+**Ainda não feito (Passo 7 — durabilidade):** hoje o servidor (`go run`) e o
+`cloudflared` (`tunnel run`) sobem **na mão**; reboot/fim de sessão derruba os
+dois e o site sai do ar até subir de novo. Instalar como serviços (subir no boot)
+fica para o **host dedicado (Raspberry Pi)** — no Linux vira `systemd`. Decisões
+de hardware conversadas: Pi 4 (2–4 GB, RAM soldada), na tomada, roda vários
+serviços; Arduino é inviável (microcontrolador, sem SO).
+
+**Feedback da Fase B registrado (no `Plano.md`, não commitado):** posição do card
+de sala no room-view; controles (volume/tela cheia) que nunca somem em fullscreen;
+botão de copiar código da sala; e **logs + métricas** pra investigar a sensação de
+instabilidade (parte dela é o restart manual, que a durabilidade resolve).
+
+**Próximo:** à escolha na volta — (a) comprar o Pi e fazer a durabilidade lá
+(Passo 7, `systemd`), (b) logs + métricas, ou (c) as correções de UI acima.
+
+---
+
 ## Sessão 10 — Parada de transmissão limpa para os viewers (Fase B) (2026-09-19)
 
 Branch: `main`. Backend (Go) + frontend (JS).
