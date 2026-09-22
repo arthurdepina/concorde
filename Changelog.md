@@ -5,6 +5,101 @@ leem este arquivo + o `Plano.md` antes de começar. Mais recente no topo.
 
 ---
 
+## Sessão 13 — Logs + métricas (observabilidade) (2026-09-22)
+
+Branch: `main`. Só backend (Go). Ataca o feedback pendente desde a Sessão 11
+("servidor parece instável; adicionar logs e métricas pra diagnosticar") — e, de
+quebra, tira do caminho uma causa real de instabilidade (panic em goroutine de
+fundo derrubava o processo inteiro).
+
+**Métricas (`internal/signaling/metrics.go` novo).** `Metrics` com contadores
+atômicos (`sync/atomic`, lock-free) do tempo de vida do processo:
+`connectionsOpened`/`connectionsClosed` (a diferença = conexões ativas; se sobe
+sem parar, socket vazando), `roomsCreated`/`roomsClosed`, `signalsRelayed`,
+`errorsSent`, `droppedMessages` (buffer de envio estourado — sinal direto de peer
+lento/travado), `acceptFailures` e `panicsRecovered`. `MetricsSnapshot` é a visão
+serializável: soma os atômicos + uma leitura sob `Hub.mu` das salas/participantes
+ativos + uptime. O `Hub` ganhou `startedAt` e um `Metrics` embutido (não copiável;
+tudo acessa via `*Hub`).
+
+**Instrumentação.** Contagem espalhada nos pontos de ciclo de vida: `ServeWS`
+(open/close via `defer`, e `acceptFailures` no erro de accept), `createRoom`
+(`roomsCreated`), `removeLocked`+`closeRoomLocked` (`roomsClosed`, os dois
+caminhos de remoção de sala), `relay` (`signalsRelayed`). `errorsSent` e
+`droppedMessages` são contados num único ponto — `Client.enqueue` (choke point de
+tudo que vai pro cliente), com guarda `c.hub != nil` porque alguns testes montam
+`Client` sem hub.
+
+**Endpoint `GET /admin/metrics`** (`admin.go`, `ServeAdminMetrics`). HTTP Basic de
+admin como os outros endpoints (os números — e o fato de o servidor estar no ar —
+não ficam públicos); responde o `MetricsSnapshot` em JSON.
+
+**Heartbeat no log (`StartStatsLogger`).** Ticker igual ao do reaper: a cada
+`STATS_INTERVAL_MINUTES` (default 15; ≤0 desliga) loga uma linha `[stats]` com o
+snapshot. Serve pro pós-morte: se o servidor cai/reinicia, dá pra varrer o log e
+ver se conexões/salas vinham subindo ou se um panic disparou antes do silêncio,
+sem precisar ter batido no `/admin/metrics` na hora certa.
+
+**Recuperação de panic (robustez, não só observabilidade).** `Hub.recoverPanic`
+(`runtime/debug.Stack`) agora protege as goroutines que o `net/http` **não**
+cobre: `writeLoop` (uma por cliente), o reaper e o stats logger. Antes, um panic
+em qualquer uma delas derrubava o processo inteiro — exatamente o tipo de coisa
+que explica "instabilidade". Agora vira log `[panic]` + incremento de
+`panicsRecovered`, e só aquela goroutine morre.
+
+**Config/wiring.** `STATS_INTERVAL_MINUTES` (default 15) em `config.go` e
+`.env.example`; `main.go` chama `hub.StartStatsLogger` e registra
+`/admin/metrics`.
+
+**Verificado:** `gofmt`/`go build`/`vet`/`test ./...` limpos. Testes novos
+(`metrics_test.go`): fluxo real create→join→relay→erro pela socket confere os
+contadores (`roomsCreated`, `connectionsOpened`/ativas, `activeRooms`/
+`participants`, `signalsRelayed`, `errorsSent`); `/admin/metrics` exige auth (401)
+e devolve o snapshot com auth; `recoverPanic` engole e conta um panic. Smoke test
+(porta 3999): `/healthz` 200, `/admin/metrics` 401 sem auth e JSON completo com
+auth, e o log de startup com a linha `[stats] heartbeat disabled` quando o
+intervalo é 0.
+
+**Não verificado aqui:** o heartbeat disparando de fato (intervalo mínimo é 1 min;
+a lógica espelha o reaper, que é testado). Nada disso precisa de navegador.
+
+**Continuação (mesmo dia) — painel visual + log de duração.** A pedido teu, as
+métricas ganharam uma cara e o backend um log que ataca o sintoma "desconexões no
+meio":
+- **Painel visual no `/admin.html`.** Um card "Métricas do servidor" acima da
+  lista de salas, mostrando uptime + tiles com cada contador, atualizando junto
+  com o auto-refresh de 5s que já existia. `admin.js`: `refresh()` agora dispara
+  `refreshRooms()` e `refreshMetrics()` em paralelo (`Promise.all`; um falhar não
+  apaga o outro, cada um tem seu próprio slot de erro). `renderMetrics` monta as
+  tiles de `STAT_FIELDS`; os contadores que **deveriam** ficar em zero num
+  servidor saudável (`droppedMessages`, `acceptFailures`, `panicsRecovered`)
+  ganham a classe `.stat--alarm` (borda + número vermelhos) quando passam de 0.
+  `formatUptime` formata d/h/m/s. CSS novo: `.stat-grid` (grid responsivo),
+  `.stat`, `.stat__label/__value`, `.stat--alarm`, `.admin__uptime`.
+- **Log de duração da conexão.** `ServeWS` agora loga
+  `[ws] client X disconnected after <dur>`. É o dedo-duro pro sintoma relatado
+  (desconexões no meio da sessão): se muitas conexões morrem sempre por volta do
+  mesmo tempo (ex.: ~100s), aponta pra **timeout de conexão ociosa** no túnel
+  Cloudflare (o WS fica quieto depois que o P2P sobe) — e aí o próximo passo seria
+  um keepalive/ping no WebSocket. Só medição por ora; nenhuma mudança de
+  comportamento.
+
+**Verificado (continuação):** `gofmt`/`build`/`vet`/`test ./...` limpos;
+`node --check public/admin.js` ok; smoke test (porta 3999, servidor fresco):
+`/admin.html` com `#metrics`/`#stat-grid`/`#uptime`, `styles.css` com
+`.stat-grid`/`.stat--alarm`, `admin.js` com `renderMetrics`/`refreshMetrics`/
+`formatUptime`, e `/admin/metrics` devolvendo o snapshot (uptime baixo,
+confirmando processo novo). **Não verificado aqui:** o visual do painel em si
+(sem navegador).
+
+**Frentes em aberto (no `Plano.md`):** ajustes de UI da Fase B aguardam tua
+validação em navegador; persistência/URL de sala precisa de conversa antes;
+durabilidade (Passo 7) espera o Raspberry Pi. **Hipótese anotada:** keepalive no
+WebSocket contra desconexão por ociosidade no túnel — investigar com o log de
+duração depois do deploy.
+
+---
+
 ## Sessão 12 — Correções de UI da Fase B (2026-09-22)
 
 Branch: `main`. Só frontend (HTML/CSS/JS); backend intacto. Fecha as correções de

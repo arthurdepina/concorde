@@ -15,7 +15,26 @@ const els = {
   empty: document.getElementById("empty"),
   dashError: document.getElementById("dash-error"),
   refreshStatus: document.getElementById("refresh-status"),
+  metrics: document.getElementById("metrics"),
+  uptime: document.getElementById("uptime"),
+  statGrid: document.getElementById("stat-grid"),
+  metricsError: document.getElementById("metrics-error"),
 };
+
+// The metrics tiles, in display order. `alarm` marks counters that should stay
+// at zero in a healthy server — any positive value turns the tile red.
+const STAT_FIELDS = [
+  { key: "activeConnections", label: "Conexões ativas" },
+  { key: "activeRooms", label: "Salas ativas" },
+  { key: "participants", label: "Participantes" },
+  { key: "connectionsOpened", label: "Conexões (total)" },
+  { key: "roomsCreated", label: "Salas criadas" },
+  { key: "signalsRelayed", label: "Sinais repassados" },
+  { key: "errorsSent", label: "Erros enviados" },
+  { key: "droppedMessages", label: "Msgs descartadas", alarm: true },
+  { key: "acceptFailures", label: "Falhas de conexão", alarm: true },
+  { key: "panicsRecovered", label: "Panics contidos", alarm: true },
+];
 
 // How often the dashboard re-fetches while open.
 const REFRESH_MS = 5000;
@@ -48,9 +67,8 @@ els.loginForm.addEventListener("submit", async (e) => {
       return;
     }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
     showDashboard();
-    renderRooms(data.rooms || []);
+    await refresh();
     startAutoRefresh();
   } catch (err) {
     authHeader = null;
@@ -63,6 +81,7 @@ els.refreshBtn.addEventListener("click", refresh);
 
 function showDashboard() {
   els.loginForm.hidden = true;
+  els.metrics.hidden = false;
   els.dashboard.hidden = false;
 }
 
@@ -73,6 +92,13 @@ function startAutoRefresh() {
 
 async function refresh() {
   if (!authHeader) return;
+  // Rooms and metrics are independent panels; one failing shouldn't blank the
+  // other. Each reports its own error and only the rooms fetch drives the
+  // shared status pill.
+  await Promise.all([refreshRooms(), refreshMetrics()]);
+}
+
+async function refreshRooms() {
   els.dashError.hidden = true;
   try {
     const res = await authFetch("/admin/rooms");
@@ -84,6 +110,18 @@ async function refresh() {
     setStatus(false);
     els.dashError.textContent = "Não foi possível atualizar as salas.";
     els.dashError.hidden = false;
+  }
+}
+
+async function refreshMetrics() {
+  els.metricsError.hidden = true;
+  try {
+    const res = await authFetch("/admin/metrics");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    renderMetrics(await res.json());
+  } catch (err) {
+    els.metricsError.textContent = "Não foi possível carregar as métricas.";
+    els.metricsError.hidden = false;
   }
 }
 
@@ -138,6 +176,41 @@ async function closeRoom(roomId, btn) {
     els.dashError.textContent = "Não foi possível fechar a sala.";
     els.dashError.hidden = false;
   }
+}
+
+function renderMetrics(snapshot) {
+  els.uptime.textContent = "no ar há " + formatUptime(snapshot.uptimeSeconds || 0);
+
+  els.statGrid.innerHTML = "";
+  for (const field of STAT_FIELDS) {
+    const value = snapshot[field.key] || 0;
+
+    const tile = document.createElement("div");
+    tile.className = "stat";
+    if (field.alarm && value > 0) tile.classList.add("stat--alarm");
+
+    const label = document.createElement("div");
+    label.className = "stat__label";
+    label.textContent = field.label;
+
+    const num = document.createElement("div");
+    num.className = "stat__value";
+    num.textContent = String(value);
+
+    tile.append(label, num);
+    els.statGrid.appendChild(tile);
+  }
+}
+
+function formatUptime(seconds) {
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (d > 0) return `${d}d ${h}h ${m}m`;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
 }
 
 function formatIdle(seconds) {

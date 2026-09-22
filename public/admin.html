@@ -25,6 +25,16 @@
           <p id="login-error" class="error" hidden></p>
         </form>
 
+        <!-- Server metrics; shown after login. -->
+        <div id="metrics" class="card admin__metrics" hidden>
+          <div class="admin__head">
+            <h2 class="card__title">Métricas do servidor</h2>
+            <span id="uptime" class="admin__uptime">—</span>
+          </div>
+          <div id="stat-grid" class="stat-grid"></div>
+          <p id="metrics-error" class="error" hidden></p>
+        </div>
+
         <!-- Shown after login. -->
         <div id="dashboard" class="card admin__dashboard" hidden>
           <div class="admin__head">

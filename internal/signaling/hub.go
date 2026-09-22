@@ -7,6 +7,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -22,6 +23,11 @@ import (
 type Hub struct {
 	cfg config.Config
 
+	// startedAt anchors the uptime reported by the metrics. Set once in New.
+	startedAt time.Time
+	// metrics are lifetime counters for observability; see metrics.go.
+	metrics Metrics
+
 	mu    sync.Mutex
 	rooms map[string]*Room
 }
@@ -29,8 +35,21 @@ type Hub struct {
 // New returns a ready-to-use Hub.
 func New(cfg config.Config) *Hub {
 	return &Hub{
-		cfg:   cfg,
-		rooms: make(map[string]*Room),
+		cfg:       cfg,
+		startedAt: time.Now(),
+		rooms:     make(map[string]*Room),
+	}
+}
+
+// recoverPanic logs and records a panic that would otherwise crash the whole
+// process from a background goroutine. net/http shields its own handler
+// goroutines, but goroutines we start ourselves (writeLoop, the reaper, the
+// stats logger) are not covered — an unrecovered panic there takes the entire
+// server down. Defer this at the top of each such goroutine.
+func (h *Hub) recoverPanic(where string) {
+	if r := recover(); r != nil {
+		h.metrics.panicsRecovered.Add(1)
+		log.Printf("[panic] recovered in %s: %v\n%s", where, r, debug.Stack())
 	}
 }
 
@@ -46,10 +65,15 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 	}
 	conn, err := websocket.Accept(w, r, opts)
 	if err != nil {
+		h.metrics.acceptFailures.Add(1)
 		log.Println("[ws] accept:", err)
 		return
 	}
 	defer conn.CloseNow()
+
+	h.metrics.connectionsOpened.Add(1)
+	defer h.metrics.connectionsClosed.Add(1)
+	connectedAt := time.Now()
 
 	client := &Client{
 		id:   randomCode(10),
@@ -68,7 +92,7 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 	client.readLoop(ctx)
 
 	h.leaveRoom(client)
-	log.Printf("[ws] client %s disconnected", client.id)
+	log.Printf("[ws] client %s disconnected after %s", client.id, time.Since(connectedAt).Round(time.Second))
 }
 
 // createRoom validates admin credentials and opens a new room with the caller as
@@ -100,6 +124,7 @@ func (h *Hub) createRoom(c *Client, in inbound) {
 	h.rooms[room.ID] = room
 	c.room = room
 	c.role = roleBroadcaster
+	h.metrics.roomsCreated.Add(1)
 
 	log.Printf("[room] %s created by %s", room.ID, c.id)
 	c.enqueue(roomCreatedMsg{Type: "room-created", RoomID: room.ID, SelfID: c.id, Role: c.role})
@@ -199,6 +224,7 @@ func (h *Hub) relay(c *Client, in inbound) {
 		return
 	}
 	target.enqueue(signalMsg{Type: "signal", From: c.id, Payload: in.Payload})
+	h.metrics.signalsRelayed.Add(1)
 }
 
 // removeLocked detaches c from its room and notifies the survivors, deleting the
@@ -214,6 +240,7 @@ func (h *Hub) removeLocked(c *Client) {
 
 	if len(room.clients) == 0 {
 		delete(h.rooms, room.ID)
+		h.metrics.roomsClosed.Add(1)
 		log.Printf("[room] %s closed (empty)", room.ID)
 		return
 	}
@@ -235,6 +262,7 @@ func (h *Hub) closeRoomLocked(room *Room, reason string) {
 	}
 	room.clients = nil
 	delete(h.rooms, room.ID)
+	h.metrics.roomsClosed.Add(1)
 	log.Printf("[room] %s closed (%s)", room.ID, reason)
 }
 
@@ -253,6 +281,7 @@ func (h *Hub) StartReaper(ctx context.Context) {
 	}
 
 	go func() {
+		defer h.recoverPanic("reaper")
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
@@ -261,6 +290,37 @@ func (h *Hub) StartReaper(ctx context.Context) {
 				return
 			case now := <-ticker.C:
 				h.reapIdle(now, ttl)
+			}
+		}
+	}()
+}
+
+// StartStatsLogger logs a periodic heartbeat with the metrics snapshot until ctx
+// is cancelled. An interval of zero or less disables it. The heartbeat is what
+// makes a crash or a slow leak visible after the fact: scanning the log shows
+// whether connections/rooms were climbing or a panic fired before the server
+// went quiet, without needing to have hit /admin/metrics at the right moment.
+func (h *Hub) StartStatsLogger(ctx context.Context) {
+	interval := time.Duration(h.cfg.StatsIntervalMinutes) * time.Minute
+	if interval <= 0 {
+		log.Println("[stats] heartbeat disabled (STATS_INTERVAL_MINUTES <= 0)")
+		return
+	}
+
+	go func() {
+		defer h.recoverPanic("stats")
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				s := h.snapshotMetrics()
+				log.Printf("[stats] uptime=%ds conns=%d rooms=%d participants=%d | opened=%d closed=%d roomsCreated=%d roomsClosed=%d relayed=%d errors=%d dropped=%d acceptFail=%d panics=%d",
+					s.UptimeSeconds, s.ActiveConnections, s.ActiveRooms, s.Participants,
+					s.ConnectionsOpened, s.ConnectionsClosed, s.RoomsCreated, s.RoomsClosed,
+					s.SignalsRelayed, s.ErrorsSent, s.DroppedMessages, s.AcceptFailures, s.PanicsRecovered)
 			}
 		}
 	}()

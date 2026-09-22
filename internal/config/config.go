@@ -29,6 +29,10 @@ type Config struct {
 	// not preserve the Host header, set this to the public host(s), e.g.
 	// "share.example.com", so the browser origin is accepted.
 	AllowedOrigins []string
+
+	// Minutes between heartbeat log lines with the metrics snapshot. Zero or less
+	// disables the heartbeat (the /admin/metrics endpoint still works).
+	StatsIntervalMinutes int
 }
 
 // Load reads configuration, applying defaults for anything unset.
@@ -36,12 +40,13 @@ func Load() Config {
 	loadDotEnv(".env")
 
 	return Config{
-		Port:            envInt("PORT", 3000),
-		AdminUser:       envStr("ADMIN_USER", "admin"),
-		AdminPassword:   envStr("ADMIN_PASSWORD", "change-me"),
-		RoomTTLMinutes:  envInt("ROOM_TTL_MINUTES", 10),
-		MaxParticipants: envInt("MAX_PARTICIPANTS", 3),
-		AllowedOrigins:  envList("ALLOWED_ORIGINS"),
+		Port:                 envInt("PORT", 3000),
+		AdminUser:            envStr("ADMIN_USER", "admin"),
+		AdminPassword:        envStr("ADMIN_PASSWORD", "change-me"),
+		RoomTTLMinutes:       envInt("ROOM_TTL_MINUTES", 10),
+		MaxParticipants:      envInt("MAX_PARTICIPANTS", 3),
+		AllowedOrigins:       envList("ALLOWED_ORIGINS"),
+		StatsIntervalMinutes: envInt("STATS_INTERVAL_MINUTES", 15),
 	}
 }
 

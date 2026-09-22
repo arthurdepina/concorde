@@ -49,6 +49,23 @@ func (h *Hub) ServeAdminRooms(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"rooms": rooms})
 }
 
+// ServeAdminMetrics answers GET /admin/metrics with the lifetime counters and
+// live room/connection counts. Admin-only, like the other admin endpoints, so
+// the numbers (and the fact that the server is up) are not exposed publicly.
+func (h *Hub) ServeAdminMetrics(w http.ResponseWriter, r *http.Request) {
+	if !h.checkAdmin(r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(h.snapshotMetrics())
+}
+
 // ServeAdminClose answers POST /admin/rooms/close ({"roomId": "..."}) by closing
 // that room and evicting everyone in it.
 func (h *Hub) ServeAdminClose(w http.ResponseWriter, r *http.Request) {

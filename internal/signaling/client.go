@@ -32,9 +32,15 @@ type Client struct {
 // full the client is too slow and we drop the message rather than stall the hub
 // (which would freeze every room, since the hub holds a single lock).
 func (c *Client) enqueue(msg any) {
+	if _, ok := msg.(errorMsg); ok && c.hub != nil {
+		c.hub.metrics.errorsSent.Add(1)
+	}
 	select {
 	case c.send <- msg:
 	default:
+		if c.hub != nil {
+			c.hub.metrics.droppedMessages.Add(1)
+		}
 		log.Printf("[ws] client %s send buffer full, dropping %T", c.id, msg)
 	}
 }
@@ -42,6 +48,7 @@ func (c *Client) enqueue(msg any) {
 // writeLoop serializes all writes to the connection until the context is
 // cancelled (connection closing) or a write fails.
 func (c *Client) writeLoop(ctx context.Context) {
+	defer c.hub.recoverPanic("writeLoop")
 	for {
 		select {
 		case <-ctx.Done():

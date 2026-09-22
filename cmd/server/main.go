@@ -20,6 +20,7 @@ func main() {
 	}
 	hub := signaling.New(cfg)
 	hub.StartReaper(context.Background())
+	hub.StartStatsLogger(context.Background())
 
 	mux := http.NewServeMux()
 	mux.Handle("/", http.FileServer(http.Dir("public")))
@@ -27,6 +28,7 @@ func main() {
 	mux.HandleFunc("/ws", hub.ServeWS)
 	mux.HandleFunc("/admin/rooms", hub.ServeAdminRooms)
 	mux.HandleFunc("/admin/rooms/close", hub.ServeAdminClose)
+	mux.HandleFunc("/admin/metrics", hub.ServeAdminMetrics)
 
 	addr := ":" + strconv.Itoa(cfg.Port)
 	log.Printf("Concorde running at http://localhost%s", addr)

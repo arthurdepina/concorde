@@ -506,6 +506,49 @@ body {
   color: var(--accent-hover);
 }
 
+.admin__uptime {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.stat {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.stat__label {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.stat__value {
+  margin-top: 2px;
+  font-size: 1.4rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A non-zero value on a counter that should normally stay at zero (dropped
+   messages, contained panics, accept failures) turns the tile red. */
+.stat--alarm {
+  border-color: var(--danger);
+}
+
+.stat--alarm .stat__value {
+  color: var(--error-text);
+}
+
 .btn-danger {
   padding: 6px 14px;
   font-size: 0.85rem;
