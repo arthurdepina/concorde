@@ -12,7 +12,8 @@ const els = {
   broadcastBtn: document.getElementById("broadcast-btn"),
   lobby: document.getElementById("lobby"),
   roomView: document.getElementById("room-view"),
-  lobbyError: document.getElementById("lobby-error"),
+  createError: document.getElementById("create-error"),
+  joinError: document.getElementById("join-error"),
   createForm: document.getElementById("create-form"),
   joinForm: document.getElementById("join-form"),
   adminUser: document.getElementById("admin-user"),
@@ -21,6 +22,7 @@ const els = {
   joinRoomId: document.getElementById("join-room-id"),
   joinRoomPass: document.getElementById("join-room-pass"),
   roomCode: document.getElementById("room-code"),
+  copyCodeBtn: document.getElementById("copy-code"),
   roomRole: document.getElementById("room-role"),
   peerList: document.getElementById("peer-list"),
   leaveBtn: document.getElementById("leave-btn"),
@@ -64,6 +66,7 @@ const state = {
   peers: new Map(), // peerId -> role
   pcs: new Map(), // peerId -> RTCPeerConnection
   localStream: null, // broadcaster's captured tab
+  pendingForm: "join", // which lobby form a server error belongs to
 };
 
 // --- connection ------------------------------------------------------------
@@ -441,13 +444,19 @@ function renderPeers() {
   }
 }
 
+// Server errors are shown right under the form the user just submitted (tracked
+// in state.pendingForm), so a wrong password / missing room lands where they were
+// looking instead of in a shared line below both forms.
 function showError(text) {
-  els.lobbyError.textContent = text;
-  els.lobbyError.hidden = false;
+  const el = state.pendingForm === "create" ? els.createError : els.joinError;
+  clearError();
+  el.textContent = text;
+  el.hidden = false;
 }
 
 function clearError() {
-  els.lobbyError.hidden = true;
+  els.createError.hidden = true;
+  els.joinError.hidden = true;
 }
 
 // --- toasts ----------------------------------------------------------------
@@ -509,10 +518,38 @@ function syncFullscreenButton() {
   els.fullscreenBtn.title = on ? "Sair da tela cheia" : "Tela cheia";
 }
 
+// While in fullscreen, the controls (and cursor) hide after a couple of seconds
+// of no mouse movement and reappear on the next move (CSS handles the fade via
+// the .controls-hidden class). The listener is only attached while fullscreen.
+let hideControlsTimer = null;
+
+function revealControls() {
+  els.videoWindow.classList.remove("controls-hidden");
+  clearTimeout(hideControlsTimer);
+  hideControlsTimer = setTimeout(() => {
+    if (document.fullscreenElement === els.videoWindow) {
+      els.videoWindow.classList.add("controls-hidden");
+    }
+  }, 2500);
+}
+
+function onFullscreenChange() {
+  syncFullscreenButton();
+  if (document.fullscreenElement === els.videoWindow) {
+    els.videoWindow.addEventListener("mousemove", revealControls);
+    revealControls();
+  } else {
+    els.videoWindow.removeEventListener("mousemove", revealControls);
+    clearTimeout(hideControlsTimer);
+    els.videoWindow.classList.remove("controls-hidden");
+  }
+}
+
 // --- events ----------------------------------------------------------------
 
 els.createForm.addEventListener("submit", (e) => {
   e.preventDefault();
+  state.pendingForm = "create";
   clearError();
   send({
     type: "create-room",
@@ -524,12 +561,29 @@ els.createForm.addEventListener("submit", (e) => {
 
 els.joinForm.addEventListener("submit", (e) => {
   e.preventDefault();
+  state.pendingForm = "join";
   clearError();
   send({
     type: "join-room",
     roomId: els.joinRoomId.value.trim().toUpperCase(),
     roomPassword: els.joinRoomPass.value,
   });
+});
+
+// Click-to-copy the room code, with brief inline confirmation on the button.
+els.copyCodeBtn.addEventListener("click", async () => {
+  if (!state.roomId) return;
+  try {
+    await navigator.clipboard.writeText(state.roomId);
+    els.copyCodeBtn.textContent = "copiado!";
+    els.copyCodeBtn.classList.add("is-copied");
+    setTimeout(() => {
+      els.copyCodeBtn.textContent = "copiar";
+      els.copyCodeBtn.classList.remove("is-copied");
+    }, 1500);
+  } catch {
+    showToast("Não foi possível copiar o código.", "error");
+  }
 });
 
 els.leaveBtn.addEventListener("click", () => {
@@ -547,7 +601,7 @@ els.broadcastBtn.addEventListener("click", () => {
 });
 
 els.fullscreenBtn.addEventListener("click", toggleFullscreen);
-document.addEventListener("fullscreenchange", syncFullscreenButton);
+document.addEventListener("fullscreenchange", onFullscreenChange);
 
 els.browserWarningClose.addEventListener("click", () => {
   els.browserWarning.hidden = true;

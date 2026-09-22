@@ -5,6 +5,72 @@ leem este arquivo + o `Plano.md` antes de começar. Mais recente no topo.
 
 ---
 
+## Sessão 12 — Correções de UI da Fase B (2026-09-22)
+
+Branch: `main`. Só frontend (HTML/CSS/JS); backend intacto. Fecha as correções de
+UI pendentes da Fase B mais uma nova pedida na volta (aviso de senha errada / sala
+inexistente).
+
+**Aviso de senha errada / sala inexistente (novo).** O mapeamento de erro já
+existia (`errorText` → "Senha da sala incorreta." / "Sala não encontrada."), mas
+caía num textinho discreto **abaixo dos dois formulários**, fácil de não ver. Agora
+cada formulário tem seu próprio slot de erro (`#create-error`/`#join-error`) num
+**box tinto** (`.form-error`, borda + fundo `--danger`) logo abaixo do botão. O
+`app.js` roteia o erro pro formulário certo via `state.pendingForm` (marcado no
+submit de cada form) — resolve a ambiguidade do código `bad-room-password`, que o
+servidor usa tanto no create (senha de sala vazia) quanto no join (senha errada).
+O `#lobby-error` compartilhado saiu.
+
+**Card da sala colado no player.** O card do room-view ficava ~50px abaixo do
+player porque, para o broadcaster, o botão "Transmitir" ocupa uma linha entre os
+dois. Regra (`styles.css`, ≥641px): quando o botão está visível,
+`.stage:has(.stage__actions > button:not([hidden])) + .panel #room-view` recebe
+`position: relative; top: -50px` (12px do gap da `.stage` + ~38px do botão),
+puxando o card pra ~16px abaixo do player, igual aos forms do lobby. O card é
+left-aligned e cap de 420px, o botão é right-aligned, então não colidem.
+
+> **Correção no mesmo dia (regressão):** a primeira versão puxava o `.panel`
+> inteiro com `margin-top: -50px`. Como o painel ocupa a **largura toda**, ele
+> ficava (invisível) por cima do botão "Transmitir" e **engolia os cliques do
+> mouse** — só o Tab+Enter funcionava (foco por teclado não passa por
+> hit-testing). Trocado por `position: relative` **só no `#room-view`** (estreito,
+> ≤420px, à esquerda), deixando o botão (à direita) livre.
+
+**Controles auto-ocultam em tela cheia.** Antes ficavam sempre visíveis em
+fullscreen. Agora `onFullscreenChange` (substitui o antigo listener que só
+sincronizava o botão) anexa um `mousemove` no `#video-window` só enquanto em
+fullscreen; após 2,5s sem movimento adiciona `.controls-hidden` (fade dos
+controles + `cursor: none` via CSS), e o próximo movimento remove. A regra
+`.video-window:fullscreen.controls-hidden` tem specificity maior que o `:hover`,
+então o ponteiro parado sobre a janela ainda deixa ocultar.
+
+**Botão de copiar código.** Botão "copiar" ao lado do código da sala
+(`#copy-code`, `.copy-btn`) → `navigator.clipboard.writeText(state.roomId)`, com
+confirmação inline ("copiado!" em verde por 1,5s) e toast de erro no fallback.
+
+**Barra de scroll on-theme.** `scrollbar-width/color` (Firefox) + regras
+`::-webkit-scrollbar*` (Chromium): trilho transparente, thumb `--border`
+(→`--off` no hover), 10px.
+
+**Verificado:** `node --check` no `app.js` ok; `go build`/`vet`/`test ./...`
+limpos (backend intacto). Smoke test (porta 3999): index com `#copy-code`,
+`#create-error`, `#join-error`; CSS com `.form-error`, `.copy-btn`,
+`.controls-hidden`, `::-webkit-scrollbar`; `app.js` com `copyCodeBtn`,
+`onFullscreenChange`, `revealControls`.
+
+**Não verificado aqui (precisa de você, navegador real):** o visual/comportamento
+de tudo — em especial (1) o card colado no player (o `-50px` é calculado; se
+sobrar/faltar um triz me diz que ajusto, ou movo o botão pra dentro do card) e (2)
+o auto-ocultar em tela cheia (timing de 2,5s). Mesma limitação de sempre (sem
+navegador aqui).
+
+**Registrado no `Plano.md` (não commitado):** ideia de **URL individual de sala +
+rejoin por URL/código+senha e persistência** — só anotada, com as decisões a tomar
+antes de implementar (o que persiste, onde guardar, rota, senha nunca na URL);
+encaixa junto da durabilidade na Fase C.
+
+---
+
 ## Sessão 11 — Deploy: `concorde.example.com` no ar (Fase C) (2026-09-21)
 
 Branch: `main`. Primeira parte da Fase C: o serviço está **público e com HTTPS**

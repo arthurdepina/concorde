@@ -27,6 +27,31 @@ body {
   min-height: 100vh;
 }
 
+/* On-theme scrollbars instead of the browser default. Firefox uses the two
+   scrollbar-* properties; Chromium/WebKit use the ::-webkit-scrollbar rules. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--off);
+}
+
 .app {
   max-width: 1080px;
   margin: 0 auto;
@@ -268,6 +293,24 @@ body {
   width: 100%;
 }
 
+/* When the broadcaster's Transmitir button is showing, it sits in its own row
+   under the player (right-aligned). Pull the room card up beside it so it hugs the
+   player like the lobby forms do, instead of sitting a full button-row lower.
+   Crucially, pull only the card (position: relative on #room-view) and NOT the
+   whole .panel: the panel spans the full width, so pulling it up would lay it —
+   invisible but click-catching — over the button and swallow every mouse click
+   (keyboard focus still worked, which is the tell). The card is capped at 420px
+   and left-aligned while the button is on the right, so on a wide screen the
+   raised card clears the button. The offset (12px stage gap + ~38px button) lands
+   it ~16px under the player, same as the lobby. Only above 640px, where the two
+   don't overlap horizontally. */
+@media (min-width: 641px) {
+  .stage:has(.stage__actions > button:not([hidden])) + .panel #room-view {
+    position: relative;
+    top: -50px;
+  }
+}
+
 .card {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
@@ -307,12 +350,56 @@ body {
   font-size: 0.85rem;
 }
 
+/* Inline form error, right under the submit button of the form it belongs to,
+   in a tinted box so a wrong password / missing room can't be missed. */
+.form-error {
+  color: var(--error-text);
+  font-size: 0.85rem;
+  padding: 8px 10px;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  background: rgba(180, 69, 59, 0.12);
+}
+
+.form-error[hidden] {
+  display: none;
+}
+
 .room-code {
   font-size: 1.6rem;
   font-weight: 700;
   letter-spacing: 3px;
   color: var(--accent-hover);
   font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Small click-to-copy button beside the room code; resets the code's big
+   monospace styling back to normal UI text. */
+.copy-btn {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: normal;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.copy-btn:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.copy-btn.is-copied {
+  border-color: var(--ok);
+  color: var(--ok);
 }
 
 .room-role {
@@ -518,6 +605,18 @@ a.btn-secondary {
   border: none;
   border-radius: 0;
   aspect-ratio: auto;
+}
+
+/* In fullscreen the controls stay visible, but after a moment of no mouse
+   movement app.js adds .controls-hidden to fade them (and the cursor) out; the
+   next mouse move removes it. Higher specificity than the :hover rule above, so a
+   stationary pointer over the window still lets them hide. */
+.video-window:fullscreen.controls-hidden .video-controls {
+  opacity: 0;
+}
+
+.video-window:fullscreen.controls-hidden {
+  cursor: none;
 }
 
 /* --- toasts --------------------------------------------------------------- */

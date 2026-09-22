@@ -64,6 +64,7 @@
               <input id="new-room-pass" class="field" type="text"
                      placeholder="Senha da sala (para os amigos)" />
               <button class="btn-primary" type="submit">Criar sala</button>
+              <p id="create-error" class="form-error" role="alert" hidden></p>
             </form>
 
             <form id="join-form" class="card">
@@ -73,17 +74,20 @@
               <input id="join-room-pass" class="field" type="password"
                      placeholder="Senha da sala" />
               <button class="btn-secondary" type="submit">Entrar</button>
+              <p id="join-error" class="form-error" role="alert" hidden></p>
             </form>
           </div>
-
-          <p id="lobby-error" class="error" hidden></p>
         </div>
 
         <!-- Shown while in a room. -->
         <div id="room-view" class="panel__view" hidden>
           <div class="card">
             <h2 class="card__title">Sala</h2>
-            <p class="room-code"><span id="room-code">------</span></p>
+            <p class="room-code">
+              <span id="room-code">------</span>
+              <button id="copy-code" class="copy-btn" type="button"
+                      title="Copiar código da sala">copiar</button>
+            </p>
             <p class="room-role">Você é <strong id="room-role">—</strong></p>
             <ul id="peer-list" class="peer-list"></ul>
             <button id="leave-btn" class="btn-secondary" type="button">
