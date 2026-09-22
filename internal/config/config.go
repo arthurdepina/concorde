@@ -33,6 +33,12 @@ type Config struct {
 	// Minutes between heartbeat log lines with the metrics snapshot. Zero or less
 	// disables the heartbeat (the /admin/metrics endpoint still works).
 	StatsIntervalMinutes int
+
+	// Seconds between WebSocket keepalive pings. After the P2P media is flowing
+	// the signaling socket goes quiet, and some proxies/tunnels close a WebSocket
+	// idle for ~100s — a mid-session disconnect from the user's point of view. A
+	// periodic ping keeps the connection warm. Zero or less disables pinging.
+	WSPingSeconds int
 }
 
 // Load reads configuration, applying defaults for anything unset.
@@ -47,6 +53,7 @@ func Load() Config {
 		MaxParticipants:      envInt("MAX_PARTICIPANTS", 3),
 		AllowedOrigins:       envList("ALLOWED_ORIGINS"),
 		StatsIntervalMinutes: envInt("STATS_INTERVAL_MINUTES", 15),
+		WSPingSeconds:        envInt("WS_PING_SECONDS", 30),
 	}
 }
 

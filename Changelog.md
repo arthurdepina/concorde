@@ -5,6 +5,40 @@ leem este arquivo + o `Plano.md` antes de começar. Mais recente no topo.
 
 ---
 
+## Sessão 14 — Keepalive do WebSocket (branch) (2026-09-22)
+
+Branch: `session-14-ws-keepalive` (fora do `main` de propósito — pra você subir a
+observabilidade da Sessão 13 primeiro e ter o baseline dos logs de duração antes
+de mudar comportamento). Ataca a hipótese do sintoma "desconexões no meio": depois
+que o P2P sobe, o socket de sinalização fica quieto e o túnel Cloudflare fecha por
+ociosidade (~100s), o que pro usuário parece uma queda no meio da sessão.
+
+**`pingLoop` (`client.go`).** Uma goroutine por cliente manda um ping WebSocket a
+cada `WS_PING_SECONDS` (default 30; ≤0 desliga). O ping é tráfego que zera o
+relógio de ociosidade do túnel; esperar o pong (timeout de 10s, `pingTimeout`)
+também detecta peer morto na hora — ping que falha chama `CloseNow`, o `readLoop`
+destrava e a limpeza normal roda. Os clientes reais têm `readLoop` sempre lendo,
+então a lib do peer responde os pings com pong sozinha. Protegida por
+`recoverPanic` como as outras goroutines de fundo.
+
+**Wiring.** `ServeWS` (`hub.go`) sobe o `pingLoop` junto do `writeLoop` quando
+`WS_PING_SECONDS > 0`. `config.go` + `.env.example` documentam a flag.
+
+**Verificado:** `gofmt`/`build`/`vet`/`test ./...` limpos. Teste novo
+(`keepalive_test.go`, `TestKeepAliveSurvivesIdle`, ~2,2s): com ping de 1s, uma
+conexão fica ociosa por ~2 intervalos e continua viva e funcional (cria sala e
+recebe `room-created`) — trava a regressão de o pinger derrubar socket saudável. O
+teste **não** prova que o timeout do túnel foi vencido (isso é `httptest`, sem
+timeout de ociosidade) — isso se valida em produção pelos logs `disconnected after
+<dur>`: sem keepalive, mortes agrupadas perto de ~100s; com keepalive, esse padrão
+some.
+
+**Como validar depois do deploy:** subir o `main` (Sessão 13) primeiro, olhar os
+logs de duração por uns dias. Se aparecer o padrão ~100s, mergear este branch e
+confirmar que some.
+
+---
+
 ## Sessão 13 — Logs + métricas (observabilidade) (2026-09-22)
 
 Branch: `main`. Só backend (Go). Ataca o feedback pendente desde a Sessão 11

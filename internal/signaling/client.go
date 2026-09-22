@@ -3,10 +3,15 @@ package signaling
 import (
 	"context"
 	"log"
+	"time"
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 )
+
+// pingTimeout is how long a single keepalive ping waits for its pong before the
+// connection is treated as dead.
+const pingTimeout = 10 * time.Second
 
 // sendBuffer is how many outbound messages we queue per client before treating
 // it as too slow. Signaling traffic is tiny and bursty, so this is generous;
@@ -55,6 +60,35 @@ func (c *Client) writeLoop(ctx context.Context) {
 			return
 		case msg := <-c.send:
 			if err := wsjson.Write(ctx, c.conn, msg); err != nil {
+				return
+			}
+		}
+	}
+}
+
+// pingLoop keeps the connection warm by sending a WebSocket ping every interval.
+// After the P2P media is flowing the signaling socket carries almost nothing, and
+// some proxies/tunnels (Cloudflare included) close a WebSocket that has been idle
+// for ~100s — which looks to the user like a mid-session disconnect. The ping is
+// traffic that resets that idle timer; waiting for the pong also detects a truly
+// dead peer promptly. A failed ping tears the connection down so readLoop
+// unblocks and the normal cleanup runs. Clients always have readLoop running, so
+// the peer's library auto-answers our pings with pongs.
+func (c *Client) pingLoop(ctx context.Context, interval time.Duration) {
+	defer c.hub.recoverPanic("pingLoop")
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			pctx, cancel := context.WithTimeout(ctx, pingTimeout)
+			err := c.conn.Ping(pctx)
+			cancel()
+			if err != nil {
+				// Dead or unresponsive peer: close now so readLoop returns.
+				c.conn.CloseNow()
 				return
 			}
 		}

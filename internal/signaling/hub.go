@@ -87,6 +87,9 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	go client.writeLoop(ctx)
+	if secs := h.cfg.WSPingSeconds; secs > 0 {
+		go client.pingLoop(ctx, time.Duration(secs)*time.Second)
+	}
 	client.enqueue(helloMsg{Type: "hello", From: "concorde"})
 
 	client.readLoop(ctx)
