@@ -397,6 +397,7 @@ function enterRoom(roomId, selfId, role, peers) {
 
   els.roomCode.textContent = roomId;
   els.roomRole.textContent = ROLE_LABEL[role] || role;
+  setRoomHash(roomId);
   renderPeers();
   clearError();
   updateBroadcastButton();
@@ -407,6 +408,7 @@ function enterRoom(roomId, selfId, role, peers) {
 
 function leaveLocal() {
   stopMedia();
+  clearRoomHash();
 
   state.roomId = null;
   state.selfId = null;
@@ -545,6 +547,47 @@ function onFullscreenChange() {
   }
 }
 
+// --- room URL (hash) -------------------------------------------------------
+
+// The room's code lives in the URL fragment (#CODE) so a room has a shareable
+// link. The password is never in the URL — the friend always types it. The
+// fragment also stays entirely client-side (browsers never send it to the
+// server), so the code leaks into no access log. A link opened in the lobby
+// pre-fills the join form; while in a room the bar mirrors the current code.
+const NON_CODE = /[^A-Z0-9]/g;
+
+function codeFromHash() {
+  return decodeURIComponent(location.hash.replace(/^#/, ""))
+    .trim()
+    .toUpperCase()
+    .replace(NON_CODE, "");
+}
+
+function roomLink() {
+  return `${location.origin}/#${state.roomId}`;
+}
+
+// Reflect the room in the address bar without adding a history entry — and,
+// because replaceState (unlike assigning location.hash) does not fire
+// hashchange, our own updates never loop back into applyHashToJoinForm.
+function setRoomHash(code) {
+  history.replaceState(null, "", `#${code}`);
+}
+
+function clearRoomHash() {
+  history.replaceState(null, "", location.pathname + location.search);
+}
+
+// A link opened while in the lobby pre-fills the code and jumps to the password
+// so the friend just types the password and hits Enter.
+function applyHashToJoinForm() {
+  if (state.roomId !== null) return; // already in a room; leave the bar alone
+  const code = codeFromHash();
+  if (!code) return;
+  els.joinRoomId.value = code;
+  els.joinRoomPass.focus();
+}
+
 // --- events ----------------------------------------------------------------
 
 els.createForm.addEventListener("submit", (e) => {
@@ -570,19 +613,20 @@ els.joinForm.addEventListener("submit", (e) => {
   });
 });
 
-// Click-to-copy the room code, with brief inline confirmation on the button.
+// Click-to-copy a shareable link to the room (#CODE, no password), with brief
+// inline confirmation on the button.
 els.copyCodeBtn.addEventListener("click", async () => {
   if (!state.roomId) return;
   try {
-    await navigator.clipboard.writeText(state.roomId);
+    await navigator.clipboard.writeText(roomLink());
     els.copyCodeBtn.textContent = "copiado!";
     els.copyCodeBtn.classList.add("is-copied");
     setTimeout(() => {
-      els.copyCodeBtn.textContent = "copiar";
+      els.copyCodeBtn.textContent = "copiar link";
       els.copyCodeBtn.classList.remove("is-copied");
     }, 1500);
   } catch {
-    showToast("Não foi possível copiar o código.", "error");
+    showToast("Não foi possível copiar o link.", "error");
   }
 });
 
@@ -611,8 +655,13 @@ els.volume.addEventListener("input", () => {
   els.video.volume = els.volume.value / 100;
 });
 
+// A link pasted into the bar while in the lobby (or the one this page opened
+// with) pre-fills the join form.
+window.addEventListener("hashchange", applyHashToJoinForm);
+
 // Hidden until we know we are a room's broadcaster.
 els.broadcastBtn.hidden = true;
 
 maybeWarnBrowser();
+applyHashToJoinForm();
 connectSignaling();

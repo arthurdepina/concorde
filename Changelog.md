@@ -5,6 +5,55 @@ leem este arquivo + o `Plano.md` antes de começar. Mais recente no topo.
 
 ---
 
+## Sessão 15 — URL individual de sala + rejoin por link (Fase B) (2026-09-25)
+
+Branch: `main`. Só frontend (JS + HTML); backend intacto. Primeira parte da
+"Persistência / URL de sala" do `Plano.md` — a **versão leve**, decidida junto:
+link compartilhável por sala enquanto ela existe, sem storage novo, sem depender
+do Pi nem de deploy. A versão durável (SQLite, sobrevive a restart) fica pra
+depois, junto do Passo 7 (durabilidade no Pi).
+
+**Escopo e decisões (conversadas antes):**
+- **Persistência:** nenhuma nova — a sala segue em memória e some no TTL/reboot.
+  O link só serve pra reentrar **enquanto a sala está viva**; se já morreu, o
+  fluxo normal avisa "sala não encontrada".
+- **Rota:** fragmento `/#CODIGO` (client-side), não `/r/CODIGO`. Zero backend, e
+  o fragmento **nunca é enviado ao servidor** — o código não vaza em log/analytics.
+- **Segurança:** a senha **nunca** vai na URL; continua sendo digitada sempre.
+
+**Frontend (`public/app.js`), nova seção "room URL (hash)":**
+- `codeFromHash()` lê `location.hash`, faz `decodeURIComponent`, trim, uppercase e
+  tira tudo fora de `[A-Z0-9]` (o servidor valida de verdade depois).
+- `setRoomHash(code)`/`clearRoomHash()` refletem a sala na barra via
+  `history.replaceState` — sem entrada nova de histórico e, de propósito, **sem
+  disparar `hashchange`** (diferente de atribuir `location.hash`), então nossas
+  próprias mudanças não voltam pra `applyHashToJoinForm` num laço.
+- `applyHashToJoinForm()` (guarda `state.roomId === null`): fora de uma sala, um
+  link com código pré-preenche `#join-room-id` e foca a senha — o amigo só digita
+  a senha e dá Enter. Chamado no load e no `hashchange` (link colado na barra).
+- Ciclo: `enterRoom` chama `setRoomHash(roomId)` (barra espelha a sala);
+  `leaveLocal` chama `clearRoomHash()` (sair/cair/fechar limpa a barra).
+- `roomLink()` = `origin + "/#" + roomId`. O botão "copiar" da sala passou a
+  **copiar o link** (antes copiava só o código): texto/rótulo viraram "copiar
+  link" (`index.html` + confirmação inline "copiado!" + toast de erro).
+
+**Verificado:** `node --check public/app.js` ok; `go build`/`vet`/`test ./...`
+limpos (backend intacto). Smoke test (porta 3999): `/healthz` 200, index com o
+botão "copiar link", `app.js` com `applyHashToJoinForm`/`setRoomHash`/
+`clearRoomHash`/`roomLink`/`codeFromHash`.
+
+**Não verificado aqui (precisa de você, navegador real):** abrir um link
+`.../#CODIGO` e ver o código pré-preenchido + foco na senha; o botão copiar
+entregando o link certo; a barra espelhando/limpando ao entrar/sair. Mesma
+limitação de sempre (sem navegador aqui).
+
+**Nota (discrepância corrigida no `Plano.md`):** o keepalive da Sessão 14 **já
+está no `main`** (commit `1853898`), não mais num branch isolado — ou seja, a
+observabilidade (Sessão 13) e o keepalive (14) sobem juntos no próximo deploy; a
+ideia de baselinar um antes do outro não aconteceu.
+
+---
+
 ## Sessão 14 — Keepalive do WebSocket (branch) (2026-09-22)
 
 Branch: `session-14-ws-keepalive` (fora do `main` de propósito — pra você subir a
