@@ -150,6 +150,7 @@ function errorText(code, fallback) {
     "bad-room-password": "Senha da sala incorreta.",
     "room-not-found": "Sala não encontrada.",
     "room-full": "A sala está cheia.",
+    "too-many-attempts": "Muitas senhas erradas. Espere alguns minutos e tente de novo.",
   };
   return map[code] || fallback || "Ocorreu um erro.";
 }

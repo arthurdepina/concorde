@@ -34,6 +34,7 @@ const STAT_FIELDS = [
   { key: "droppedMessages", label: "Msgs descartadas", alarm: true },
   { key: "acceptFailures", label: "Falhas de conexão", alarm: true },
   { key: "panicsRecovered", label: "Panics contidos", alarm: true },
+  { key: "loginLockouts", label: "Bloqueios de login", alarm: true },
 ];
 
 // How often the dashboard re-fetches while open.
@@ -60,9 +61,12 @@ els.loginForm.addEventListener("submit", async (e) => {
   // A probe request validates the credentials before showing the dashboard.
   try {
     const res = await authFetch("/admin/rooms");
-    if (res.status === 401) {
+    if (res.status === 401 || res.status === 429) {
       authHeader = null;
-      els.loginError.textContent = "Usuário ou senha de admin incorretos.";
+      els.loginError.textContent =
+        res.status === 429
+          ? "Muitas senhas erradas. Espere alguns minutos e tente de novo."
+          : "Usuário ou senha de admin incorretos.";
       els.loginError.hidden = false;
       return;
     }

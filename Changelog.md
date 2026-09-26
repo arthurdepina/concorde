@@ -5,6 +5,56 @@ leem este arquivo + o `Plano.md` antes de começar. Mais recente no topo.
 
 ---
 
+## Sessão 16 — Limite de tentativas de senha (2026-09-25)
+
+Branch: `main`. Backend (Go) + mensagens no frontend. A sessão também definiu a
+direção do projeto e a ordem dos próximos passos (registradas no `Plano.md`).
+
+**Limite (`internal/signaling/login.go` novo).** `loginLimiter`: depois de
+`LOGIN_MAX_FAILURES` (default 3) senhas erradas seguidas, o visitante fica
+bloqueado por `LOGIN_LOCKOUT_MINUTES` (default 15) — nem a senha certa entra
+nesse meio-tempo. Senha certa zera a sequência; erros mais espaçados que o
+bloqueio não se somam. Admin e sala contam separado (chaves `admin|IP` e
+`room|IP`), então um amigo errando a senha da sala não tranca o admin. O mapa é
+podado a cada minuto (não cresce sem limite). `≤0` desliga.
+- **Onde vale:** como admin, o `create-room` (WS) e os endpoints HTTP do painel
+  (`authorizeAdmin` substitui o `checkAdmin`: 429 + `Retry-After` durante o
+  bloqueio, 401 com credencial errada; request sem credencial não conta). Como
+  sala, o `join-room` com senha errada (sala inexistente não conta).
+- **IP do visitante (`clientIP`).** Atrás do túnel, todo request chega do
+  `cloudflared` local (loopback), então o IP real vem do `CF-Connecting-IP` —
+  confiado só quando a conexão vem de loopback (um cliente direto na rede não
+  consegue forjar). Sem isso, 3 erros de qualquer um trancariam todo mundo.
+- A senha de admin no WS agora também é comparada em tempo constante
+  (`adminCredentialsOK`, compartilhada com o HTTP).
+- **Observabilidade:** log `[auth] ... locked out`, contador `loginLockouts` no
+  `/admin/metrics` e tile "Bloqueios de login" (com alarme) no painel.
+- **Frontend:** código `too-many-attempts` → "Muitas senhas erradas. Espere
+  alguns minutos e tente de novo." (no formulário certo, via `pendingForm`); o
+  login do painel trata o 429.
+- **Config:** `LOGIN_MAX_FAILURES` e `LOGIN_LOCKOUT_MINUTES` em `config.go` e
+  `.env.example`.
+
+**Verificado:** `go build`/`vet`/`test ./...` limpos. Testes novos
+(`login_test.go`): o limitador (trava no 3º erro, destrava após o bloqueio,
+sucesso zera, erros espaçados não somam, `0` desliga), `clientIP` (confia no
+header só via loopback) e o bloqueio de ponta a ponta no WS (admin e sala, com
+contagens separadas e a métrica) e no HTTP (401×3 → 429 com `Retry-After`; sem
+credencial não conta). `node --check` nos dois JS. Smoke test (porta 3999): 401,
+401, 401 → 429 com `Retry-After: 900`; outro visitante (via
+`CF-Connecting-IP`) → 200; `loginLockouts` = 1.
+
+**Nota (Windows/gofmt):** o working tree usa CRLF (`core.autocrlf=true`) e o
+`gofmt -l` acusa todo arquivo por isso. Para checar a formatação, remover o CR
+antes (`tr -d '\r' < f | gofmt`); não rodar `go fmt ./...` direto, que reescreve
+tudo em LF.
+
+**Não verificado aqui:** o bloqueio atrás do túnel real (depende do
+`CF-Connecting-IP`, que a Cloudflare envia por padrão) e as mensagens no
+navegador.
+
+---
+
 ## Sessão 15 — URL individual de sala + rejoin por link (Fase B) (2026-09-25)
 
 Branch: `main`. Só frontend (JS + HTML); backend intacto. Primeira parte da

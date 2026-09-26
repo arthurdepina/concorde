@@ -39,6 +39,14 @@ type Config struct {
 	// idle for ~100s — a mid-session disconnect from the user's point of view. A
 	// periodic ping keeps the connection warm. Zero or less disables pinging.
 	WSPingSeconds int
+
+	// Wrong passwords allowed in a row per visitor (admin and room passwords are
+	// counted separately) before that visitor is locked out for
+	// LoginLockoutMinutes — even the right password is refused meanwhile, so the
+	// passwords can't be brute-forced through the public endpoints. Zero or less
+	// disables the limit.
+	LoginMaxFailures    int
+	LoginLockoutMinutes int
 }
 
 // Load reads configuration, applying defaults for anything unset.
@@ -54,6 +62,8 @@ func Load() Config {
 		AllowedOrigins:       envList("ALLOWED_ORIGINS"),
 		StatsIntervalMinutes: envInt("STATS_INTERVAL_MINUTES", 15),
 		WSPingSeconds:        envInt("WS_PING_SECONDS", 30),
+		LoginMaxFailures:     envInt("LOGIN_MAX_FAILURES", 3),
+		LoginLockoutMinutes:  envInt("LOGIN_LOCKOUT_MINUTES", 15),
 	}
 }
 

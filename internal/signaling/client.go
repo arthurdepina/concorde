@@ -24,7 +24,9 @@ const sendBuffer = 32
 //
 // room and role are owned by the hub and only touched while holding Hub.mu.
 type Client struct {
-	id   string
+	id string
+	// ip is the visitor's address (see clientIP), charged for wrong passwords.
+	ip   string
 	conn *websocket.Conn
 	hub  *Hub
 	send chan any

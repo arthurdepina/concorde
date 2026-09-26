@@ -27,6 +27,8 @@ type Hub struct {
 	startedAt time.Time
 	// metrics are lifetime counters for observability; see metrics.go.
 	metrics Metrics
+	// logins locks out visitors after too many wrong passwords; see login.go.
+	logins *loginLimiter
 
 	mu    sync.Mutex
 	rooms map[string]*Room
@@ -37,6 +39,7 @@ func New(cfg config.Config) *Hub {
 	return &Hub{
 		cfg:       cfg,
 		startedAt: time.Now(),
+		logins:    newLoginLimiter(cfg.LoginMaxFailures, time.Duration(cfg.LoginLockoutMinutes)*time.Minute),
 		rooms:     make(map[string]*Room),
 	}
 }
@@ -77,6 +80,7 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 
 	client := &Client{
 		id:   randomCode(10),
+		ip:   clientIP(r),
 		conn: conn,
 		hub:  h,
 		send: make(chan any, sendBuffer),
@@ -101,10 +105,18 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 // createRoom validates admin credentials and opens a new room with the caller as
 // broadcaster.
 func (h *Hub) createRoom(c *Client, in inbound) {
-	if in.User != h.cfg.AdminUser || in.Password != h.cfg.AdminPassword {
+	key := loginKindAdmin + c.ip
+	now := time.Now()
+	if h.logins.lockedFor(key, now) > 0 {
+		c.enqueue(newError(errTooManyAttempts, "too many failed attempts, try again later"))
+		return
+	}
+	if !h.adminCredentialsOK(in.User, in.Password) {
+		h.loginFailed(key, now)
 		c.enqueue(newError(errBadAdmin, "invalid admin credentials"))
 		return
 	}
+	h.logins.succeed(key)
 	if strings.TrimSpace(in.RoomPassword) == "" {
 		c.enqueue(newError(errBadRoomPassword, "a room password is required"))
 		return
@@ -116,7 +128,6 @@ func (h *Hub) createRoom(c *Client, in inbound) {
 	// Moving between rooms is fine; drop the old membership first.
 	h.removeLocked(c)
 
-	now := time.Now()
 	room := &Room{
 		ID:         h.uniqueRoomIDLocked(),
 		Password:   in.RoomPassword,
@@ -137,6 +148,12 @@ func (h *Hub) createRoom(c *Client, in inbound) {
 // room capacity, and notifies everyone already inside.
 func (h *Hub) joinRoom(c *Client, in inbound) {
 	roomID := strings.ToUpper(strings.TrimSpace(in.RoomID))
+	key := loginKindRoom + c.ip
+	now := time.Now()
+	if h.logins.lockedFor(key, now) > 0 {
+		c.enqueue(newError(errTooManyAttempts, "too many failed attempts, try again later"))
+		return
+	}
 
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -147,9 +164,11 @@ func (h *Hub) joinRoom(c *Client, in inbound) {
 		return
 	}
 	if room.Password != in.RoomPassword {
+		h.loginFailed(key, now)
 		c.enqueue(newError(errBadRoomPassword, "wrong room password"))
 		return
 	}
+	h.logins.succeed(key)
 	if len(room.clients) >= h.cfg.MaxParticipants {
 		c.enqueue(newError(errRoomFull, "room is full"))
 		return

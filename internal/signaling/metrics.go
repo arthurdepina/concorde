@@ -25,6 +25,9 @@ type Metrics struct {
 	droppedMessages   atomic.Int64
 	acceptFailures    atomic.Int64
 	panicsRecovered   atomic.Int64
+	// loginLockouts counts visitors locked out for too many wrong passwords —
+	// someone guessing, or a friend fumbling theirs.
+	loginLockouts atomic.Int64
 }
 
 // MetricsSnapshot is a point-in-time, serializable view of the counters plus the
@@ -45,6 +48,7 @@ type MetricsSnapshot struct {
 	DroppedMessages   int64     `json:"droppedMessages"`
 	AcceptFailures    int64     `json:"acceptFailures"`
 	PanicsRecovered   int64     `json:"panicsRecovered"`
+	LoginLockouts     int64     `json:"loginLockouts"`
 }
 
 // snapshotMetrics builds a MetricsSnapshot. It takes h.mu only to count live
@@ -77,5 +81,6 @@ func (h *Hub) snapshotMetrics() MetricsSnapshot {
 		DroppedMessages:   m.droppedMessages.Load(),
 		AcceptFailures:    m.acceptFailures.Load(),
 		PanicsRecovered:   m.panicsRecovered.Load(),
+		LoginLockouts:     m.loginLockouts.Load(),
 	}
 }

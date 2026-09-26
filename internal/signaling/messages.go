@@ -18,6 +18,7 @@ const (
 	errRoomFull        = "room-full"
 	errNotInRoom       = "not-in-room"
 	errPeerNotFound    = "peer-not-found"
+	errTooManyAttempts = "too-many-attempts"
 )
 
 // inbound is any message a client sends us. Only the fields relevant to Type
