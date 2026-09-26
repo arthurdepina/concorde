@@ -33,14 +33,29 @@
             Nenhuma transmissão ainda.
           </p>
           <video id="video" class="video" playsinline hidden></video>
+          <!-- Live stream numbers (resolution, fps, bitrate, path); toggled from
+               the stats button, filled by app.js. -->
+          <div id="stats-overlay" class="stats-overlay" hidden></div>
           <div id="video-controls" class="video-controls" hidden>
-            <label class="volume">
+            <label id="volume-control" class="volume">
               <span class="volume__icon" aria-hidden="true">🔊</span>
               <input id="volume" class="volume__slider" type="range"
                      min="0" max="100" value="100" aria-label="Volume" />
             </label>
-            <button id="fullscreen-btn" class="icon-btn" type="button"
-                    aria-label="Tela cheia" title="Tela cheia">⛶</button>
+            <div class="video-controls__buttons">
+              <button id="stats-btn" class="icon-btn" type="button"
+                      aria-pressed="false" aria-label="Estatísticas da transmissão"
+                      title="Estatísticas da transmissão">
+                <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"
+                     aria-hidden="true">
+                  <rect x="2" y="9" width="3" height="5" rx="1" />
+                  <rect x="6.5" y="5.5" width="3" height="8.5" rx="1" />
+                  <rect x="11" y="2" width="3" height="12" rx="1" />
+                </svg>
+              </button>
+              <button id="fullscreen-btn" class="icon-btn" type="button"
+                      aria-label="Tela cheia" title="Tela cheia">⛶</button>
+            </div>
           </div>
         </div>
         <!-- Broadcast control sits just under the player, aligned to its right. -->

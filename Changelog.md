@@ -5,6 +5,111 @@ leem este arquivo + o `Plano.md` antes de começar. Mais recente no topo.
 
 ---
 
+## Sessão 17 — Qualidade: estatísticas, bitrate, áudio estéreo e medição de TURN (2026-09-25)
+
+Branch: `main`. Passo 2 do `Plano.md`. Frontend (JS/HTML/CSS) + um pedaço de
+backend (Go) pra medição. **Primeira sessão testada em navegador real** (Chrome
+headless dirigido por script — ver "Verificado").
+
+**Ajustes de qualidade (`public/app.js`, lado de quem transmite).**
+- **Vídeo:** `contentHint = "motion"` na track (captura de tela vem como
+  "detail", que preserva resolução e derruba fps; anime é vídeo em movimento).
+  Teto de bitrate **8 Mb/s por espectador** (`VIDEO_MAX_BITRATE`) via
+  `addTransceiver(track, {direction: "sendonly", streams, sendEncodings})` — o
+  `addTrack` saiu; o teto vale desde o primeiro quadro, sem `setParameters`
+  depois. O controle de congestionamento continua baixando abaixo do teto se o
+  link não aguenta.
+- **Partida do bitrate:** o Chrome começa a estimativa de banda em ~300 kb/s;
+  `x-google-start-bitrate=3000` (kb/s, `VIDEO_START_BITRATE`) no fmtp de cada
+  codec de vídeo faz começar em 3 Mb/s.
+- **Áudio:** Opus **estéreo a 128 kb/s** (`AUDIO_BITRATE`; o padrão é ~32 kb/s
+  mono, qualidade de chamada). `contentHint = "music"` e `channelCount: {ideal:
+  2}` na captura.
+- **Como:** o encoder de quem envia segue as preferências de quem recebe no
+  fmtp da *answer*, e não existe API pra isso — então `tuneAnswer` edita a
+  answer do espectador **no transmissor, antes do `setRemoteDescription`**
+  (`stereo=1;maxaveragebitrate=128000` no Opus; `x-google-start-bitrate` nos
+  codecs de vídeo; rtx/RED/FEC intactos). `setFmtp`/`mergeFmtp` mesclam
+  parâmetros e criam a linha fmtp se não existir (o VP8 do Chrome não tem).
+
+**Painel de estatísticas (`getStats`).** Botão novo (ícone de barras,
+`#stats-btn`, `aria-pressed`) nos controles do vídeo liga um overlay no canto
+superior esquerdo (`#stats-overlay`, monoespaçado, `pointer-events: none`),
+atualizado a cada 1 s e **só consultando enquanto visível**. A escolha fica
+lembrada no navegador (`localStorage`, com try/catch).
+- **Quem assiste:** resolução · fps / bitrate de vídeo (codec) · bitrate de
+  áudio / caminho · RTT · perda.
+- **Quem transmite:** uma entrada por espectador (cada um tem seu encoder) com o
+  que está saindo e o **gargalo** do encoder (`qualityLimitationReason`:
+  nenhum / banda / CPU) — diz o que resolver quando a qualidade cai. Perda vem
+  do RTCP do espectador (`remote-inbound-rtp`). Os controles do transmissor
+  agora aparecem só com esse botão (volume e tela cheia escondidos).
+- Bitrate e perda são taxas do último intervalo: `readStats` guarda o relatório
+  anterior na própria PC (`pc.lastStats`). Caminho vem do par de candidatos
+  selecionado (`transport.selectedCandidatePairId`; fallback `selected` do
+  Firefox): "P2P direto" (host↔host: mesma rede ou IPv6 público), "P2P via NAT
+  (STUN)" (srflx/prflx) ou "via TURN (relay)".
+
+**Medição de TURN (backend + frontend).** Mensagem nova cliente→servidor
+`rtc-report {outcome, localType, remoteType, protocol}`, enviada **só por quem
+assiste** (uma conexão cada, nada contado duas vezes): `connected` (na primeira
+vez que conecta, com o caminho), `failed` (falhou **sem nunca conectar** = esse
+par precisaria de TURN) ou `dropped` (conectou e caiu no meio).
+- `internal/signaling/rtc.go` (novo): `Hub.rtcReport` ignora em silêncio
+  (sem erro de volta) relatório do transmissor, de fora de sala ou com outcome
+  desconhecido; tipos de candidato/protocolo passam por whitelist antes do log.
+  Log `[rtc] room X: viewer Y connected (srflx→host udp)` /
+  `failed to connect (no path without TURN)` / `dropped mid-stream`.
+- Contadores `p2pConnected`/`p2pFailed`/`p2pDropped` no `/admin/metrics`, no
+  heartbeat `[stats]` (que também ganhou o `lockouts` que faltava) e tiles no
+  painel: "P2P conectadas", "P2P sem conexão (TURN)" e "P2P caídas" (esses dois
+  com alarme).
+
+**Verificado.** `go build`/`vet`/`test ./...` limpos (gofmt checado sem CR).
+Testes novos (`rtc_test.go`): os três outcomes contados; relatório do
+transmissor, de fora de sala e outcome inválido ignorados sem erro; whitelist.
+`node --check` nos dois JS; teste isolado das funções puras (`tuneAnswer` com
+e sem linha fmtp, rtx/RED intactos, idempotência, formatação do overlay).
+
+**Teste ponta a ponta em Chrome real (headless, via DevTools Protocol).** Script
+fora do repo (scratchpad): Chrome 153 headless com perfil temporário e
+`--mute-audio`, servidor de teste na porta 3999, abas transmissor + espectador(es).
+A captura foi trocada, só nessas abas, por uma fonte sintética (canvas 1920×1080
+a 30 fps imitando anime — cenário detalhado em panorâmica + formas chapadas — e
+ruído estéreo que não toca em lugar nenhum), porque o headless ignora a escolha
+de aba e captura a tela. Resultados (loopback, sem limite de banda):
+- **A/B do teto:** sem teto (padrão do Chrome) o encoder trava em
+  `targetBitrate` **2 Mb/s → 960×540**. Com o teto: **1920×1080 · 30 fps ·
+  ~8 Mb/s, gargalo "nenhum"**.
+- **Partida:** sem `x-google-start-bitrate`, 360p nos primeiros ~30 s e 1080p
+  só aos ~45 s. Com 3 Mb/s: 720p a ~6–8 Mb/s em 5 s, **1080p aos ~20 s**.
+- **Áudio:** answer aplicada com `stereo=1;maxaveragebitrate=128000`, encoder
+  com `targetBitrate: 128000` e 2 canais; espectador recebe ~128–130 kb/s.
+- **Sala cheia (2 espectadores):** o segundo entra no meio da transmissão e
+  recebe vídeo; overlay lista os dois. Nesta máquina apareceu **"gargalo: CPU"**
+  (dois encoders VP8 1080p em software + o próprio teste gerando o canvas e
+  decodificando os dois espectadores) — em uso real o transmissor só codifica,
+  mas é o sinal a observar.
+- **Falha de ICE simulada** (candidatos remotos trocados por um IP
+  inalcançável, 192.0.2.1): "connecting" → "failed" em ~30 s, toast no
+  espectador, `rtc-report failed`, `p2pFailed` = 1 e o log `no path without
+  TURN`. (Sem *nenhum* candidato remoto o Chrome fica em "checking" sem nunca
+  falhar — cenário irreal, NAT de verdade sempre troca candidatos.)
+- Parada limpa ("A transmissão foi encerrada.", overlay some) e relatório
+  `connected (host→host udp)` conferidos em todas as rodadas.
+
+> **Lição (Windows):** headless **não é mudo**. A primeira rodada, sem
+> `--mute-audio`, capturou a tela *com áudio do sistema*, e a aba espectadora
+> tocava o que recebia — microfonia digital nos alto-falantes. Sempre
+> `--mute-audio`; e só matar processos com o caminho do perfil temporário na
+> linha de comando (a porta 3000 é o servidor de produção nesta máquina).
+
+**Não verificado aqui:** captura de **aba** real (o headless captura a tela), e
+qualquer coisa com banda limitada de verdade ou NAT real — isso é a tua
+validação em produção (episódio inteiro + os números de TURN no painel).
+
+---
+
 ## Sessão 16 — Limite de tentativas de senha (2026-09-25)
 
 Branch: `main`. Backend (Go) + mensagens no frontend. A sessão também definiu a

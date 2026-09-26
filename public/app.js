@@ -31,7 +31,10 @@ const els = {
   videoPlaceholder: document.getElementById("video-placeholder"),
   videoControls: document.getElementById("video-controls"),
   volume: document.getElementById("volume"),
+  volumeControl: document.getElementById("volume-control"),
   fullscreenBtn: document.getElementById("fullscreen-btn"),
+  statsBtn: document.getElementById("stats-btn"),
+  statsOverlay: document.getElementById("stats-overlay"),
   browserWarning: document.getElementById("browser-warning"),
   browserWarningClose: document.getElementById("browser-warning-close"),
   toasts: document.getElementById("toasts"),
@@ -55,8 +58,20 @@ const CAPTURE = {
     echoCancellation: false,
     noiseSuppression: false,
     autoGainControl: false,
+    channelCount: { ideal: 2 },
   },
 };
+
+// Encoding targets (numbers measured in Chrome, see Changelog, session 17).
+// Chrome caps video at 2 Mb/s by default, which held anime-like 1080p content
+// to ~540p; the cap is a ceiling, and congestion control still backs off below
+// it on a link that can't take it. Chrome also starts its bandwidth estimate at
+// ~300 kb/s and took ~45 s to climb from 360p to 1080p; starting it higher gets
+// there in ~20 s. Opus defaults to ~32 kb/s mono — voice-call quality — so tab
+// audio gets stereo at a music-grade bitrate.
+const VIDEO_MAX_BITRATE = 8_000_000; // bits/s, per viewer
+const VIDEO_START_BITRATE = 3_000_000; // bits/s, per viewer
+const AUDIO_BITRATE = 128_000; // bits/s, Opus stereo
 
 const state = {
   socket: null,
@@ -178,7 +193,15 @@ function createPeerConnection(peerId) {
       sendSignal(peerId, { kind: "ice", candidate: e.candidate });
     }
   });
+  // Viewers report how the connection turned out, so the server can count how
+  // often STUN alone is not enough (see reportPath). Each viewer has exactly one
+  // connection, so every pair is counted once.
+  let everConnected = false;
   pc.addEventListener("connectionstatechange", () => {
+    if (pc.connectionState === "connected" && !everConnected) {
+      everConnected = true;
+      if (state.role === "viewer") reportPath(pc);
+    }
     if (pc.connectionState === "failed") {
       console.warn("[rtc] connection to", peerId, "failed");
       // A viewer has a single connection (to the broadcaster); if it fails there
@@ -186,6 +209,8 @@ function createPeerConnection(peerId) {
       // one viewer dropping is not worth a popup.
       if (state.role === "viewer") {
         showToast("Falha na conexão com quem transmite.");
+        // Never connected: no path without TURN. Connected before: lost midway.
+        send({ type: "rtc-report", outcome: everConnected ? "dropped" : "failed" });
       }
     }
   });
@@ -198,8 +223,16 @@ function createPeerConnection(peerId) {
 // tracks, and sends the offer.
 async function offerTo(peerId) {
   const pc = createPeerConnection(peerId);
-  for (const track of state.localStream.getTracks()) {
-    pc.addTrack(track, state.localStream);
+  const stream = state.localStream;
+  for (const track of stream.getTracks()) {
+    // Send-only (viewers never send media back). The video bitrate ceiling goes
+    // in at creation, so it applies from the first frame without a later
+    // setParameters round.
+    const init = { direction: "sendonly", streams: [stream] };
+    if (track.kind === "video") {
+      init.sendEncodings = [{ maxBitrate: VIDEO_MAX_BITRATE }];
+    }
+    pc.addTransceiver(track, init);
   }
   try {
     const offer = await pc.createOffer();
@@ -238,7 +271,10 @@ async function handleSignal(from, payload) {
         // Broadcaster side: the viewer accepted our offer.
         const pc = state.pcs.get(from);
         if (pc) {
-          await pc.setRemoteDescription(payload.sdp);
+          await pc.setRemoteDescription({
+            type: payload.sdp.type,
+            sdp: tuneAnswer(payload.sdp.sdp),
+          });
           await flushCandidates(pc);
         }
         break;
@@ -272,6 +308,47 @@ async function flushCandidates(pc) {
   }
 }
 
+const VIDEO_CODECS = new Set(["vp8", "vp9", "h264", "h265", "av1"]);
+
+// tuneAnswer edits a viewer's answer before the broadcaster applies it. The
+// sender's encoders follow the receiver's preferences in the answer's fmtp
+// lines, and no browser API sets these — hence the SDP edit. Opus gets stereo at
+// AUDIO_BITRATE; each video codec gets Chrome's start-bitrate hint (kb/s, see
+// VIDEO_START_BITRATE). Only those fmtp lines are touched (retransmission/FEC
+// entries are left alone).
+function tuneAnswer(sdp) {
+  const opus = { stereo: "1", maxaveragebitrate: String(AUDIO_BITRATE) };
+  const video = { "x-google-start-bitrate": String(VIDEO_START_BITRATE / 1000) };
+  for (const [, pt, codec] of sdp.matchAll(/^a=rtpmap:(\d+) ([\w-]+)\//gm)) {
+    const name = codec.toLowerCase();
+    if (name === "opus") sdp = setFmtp(sdp, pt, opus);
+    else if (VIDEO_CODECS.has(name)) sdp = setFmtp(sdp, pt, video);
+  }
+  return sdp;
+}
+
+// setFmtp merges `wanted` into the fmtp line of payload type pt, adding the
+// line right after its rtpmap if there is none yet.
+function setFmtp(sdp, pt, wanted) {
+  const fmtp = new RegExp(`^a=fmtp:${pt} (.*)$`, "m");
+  if (fmtp.test(sdp)) {
+    return sdp.replace(fmtp, (_, params) => `a=fmtp:${pt} ${mergeFmtp(params, wanted)}`);
+  }
+  const rtpmap = new RegExp(`^a=rtpmap:${pt} .*$`, "m");
+  return sdp.replace(rtpmap, (line) => `${line}\r\na=fmtp:${pt} ${mergeFmtp("", wanted)}`);
+}
+
+// mergeFmtp sets `wanted` on a "k=v;k=v" fmtp parameter list, keeping the rest.
+function mergeFmtp(params, wanted) {
+  const merged = new Map();
+  for (const part of params.split(";")) {
+    const [key, value] = part.split("=").map((s) => s.trim());
+    if (key) merged.set(key, value);
+  }
+  for (const [key, value] of Object.entries(wanted)) merged.set(key, value);
+  return [...merged].map(([k, v]) => (v === undefined ? k : `${k}=${v}`)).join(";");
+}
+
 // startBroadcast captures a tab and streams it to every viewer in the room.
 async function startBroadcast() {
   // getDisplayMedia is missing on insecure origins (non-HTTPS, non-localhost)
@@ -294,8 +371,13 @@ async function startBroadcast() {
   }
 
   state.localStream = stream;
+  const [video] = stream.getVideoTracks();
+  // Screen capture defaults to "detail" (static text: keep resolution, drop
+  // frames). Anime is moving video, so tell the encoder to favour smoothness.
+  video.contentHint = "motion";
+  for (const audio of stream.getAudioTracks()) audio.contentHint = "music";
   // Stopping the share from the browser's own UI ends the broadcast too.
-  stream.getVideoTracks()[0].addEventListener("ended", stopBroadcast);
+  video.addEventListener("ended", stopBroadcast);
 
   showLocalPreview();
   updateBroadcastButton();
@@ -354,10 +436,12 @@ function handleBroadcastStopped() {
 
 // --- video display ---------------------------------------------------------
 
+// The broadcaster's preview keeps only the stats toggle: there is no volume to
+// adjust (the preview is muted) and no point in fullscreening your own tab.
 function showLocalPreview() {
   els.video.srcObject = state.localStream;
   els.video.muted = true; // don't echo our own tab back at us
-  els.videoControls.hidden = true; // the broadcaster has no volume to adjust
+  setControls({ viewer: false });
   showVideo();
 }
 
@@ -365,14 +449,21 @@ function showRemoteStream(stream) {
   els.video.srcObject = stream;
   els.video.muted = false;
   els.video.volume = els.volume.value / 100;
-  els.videoControls.hidden = false;
+  setControls({ viewer: true });
   showVideo();
+}
+
+function setControls({ viewer }) {
+  els.videoControls.hidden = false;
+  els.volumeControl.hidden = !viewer;
+  els.fullscreenBtn.hidden = !viewer;
 }
 
 function showVideo() {
   els.video.hidden = false;
   els.videoPlaceholder.hidden = true;
   els.video.play().catch(() => {});
+  syncStats();
 }
 
 function hideVideo() {
@@ -380,6 +471,255 @@ function hideVideo() {
   els.video.hidden = true;
   els.videoControls.hidden = true;
   els.videoPlaceholder.hidden = false;
+  syncStats();
+}
+
+// --- stream stats ----------------------------------------------------------
+
+// An overlay (toggled from the video controls, remembered per browser) with the
+// stream's real numbers from getStats, refreshed every second: what a viewer is
+// actually receiving or, for the broadcaster, what goes out to each viewer and
+// what — if anything — holds the encoder back. It only polls while shown.
+const STATS_INTERVAL_MS = 1000;
+const STATS_PREF_KEY = "concorde.stats";
+
+let statsOn = loadStatsPref();
+let statsTimer = null;
+let statsBusy = false; // a slow getStats round must not overlap the next tick
+
+function loadStatsPref() {
+  try {
+    return localStorage.getItem(STATS_PREF_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function toggleStats() {
+  statsOn = !statsOn;
+  try {
+    localStorage.setItem(STATS_PREF_KEY, statsOn ? "1" : "0");
+  } catch {
+    // Storage blocked (private window, etc.): the toggle still works this visit.
+  }
+  syncStats();
+}
+
+// syncStats shows the overlay while it is toggled on and a video is up, and
+// polls only then.
+function syncStats() {
+  const visible = statsOn && !els.video.hidden;
+  els.statsBtn.setAttribute("aria-pressed", String(statsOn));
+  els.statsOverlay.hidden = !visible;
+  if (visible && !statsTimer) {
+    renderStats(["medindo…"]);
+    statsTimer = setInterval(updateStats, STATS_INTERVAL_MS);
+    updateStats();
+  } else if (!visible && statsTimer) {
+    clearInterval(statsTimer);
+    statsTimer = null;
+  }
+}
+
+async function updateStats() {
+  if (statsBusy) return;
+  statsBusy = true;
+  try {
+    const samples = await Promise.all(
+      [...state.pcs.values()].map((pc) => readStats(pc).catch(() => null)),
+    );
+    if (!statsTimer) return; // hidden while we were reading
+    renderStats(
+      state.role === "broadcaster" ? broadcasterLines(samples) : viewerLines(samples[0]),
+    );
+  } finally {
+    statsBusy = false;
+  }
+}
+
+function renderStats(lines) {
+  els.statsOverlay.replaceChildren(
+    ...lines.map((text) => {
+      const line = document.createElement("div");
+      line.textContent = text;
+      return line;
+    }),
+  );
+}
+
+// readStats condenses one getStats() report into what the overlay shows.
+// Bitrates and loss are rates over the last interval, so each call keeps its
+// report on the connection for the next call to diff against.
+async function readStats(pc) {
+  const report = await pc.getStats();
+  const prev = pc.lastStats;
+  pc.lastStats = report;
+
+  const sample = { video: null, audio: null, rttMs: null, lossPct: null, path: null };
+  const pair = selectedPair(report);
+  if (pair) {
+    sample.path = pathOf(report, pair);
+    if (pair.currentRoundTripTime != null) sample.rttMs = pair.currentRoundTripTime * 1000;
+  }
+
+  for (const s of report.values()) {
+    if (s.type === "inbound-rtp" || s.type === "outbound-rtp") {
+      const inbound = s.type === "inbound-rtp";
+      const before = prev?.get(s.id);
+      const media = {
+        kbps: rateKbps(before, s, inbound ? "bytesReceived" : "bytesSent"),
+        codec: report.get(s.codecId)?.mimeType?.split("/")[1],
+      };
+      if (s.kind === "video") {
+        media.width = s.frameWidth;
+        media.height = s.frameHeight;
+        media.fps = s.framesPerSecond;
+        media.limit = s.qualityLimitationReason; // sender side only
+        if (inbound) sample.lossPct = lossPct(before, s);
+        sample.video = media;
+      } else if (s.kind === "audio") {
+        sample.audio = media;
+      }
+    } else if (s.type === "remote-inbound-rtp" && s.kind === "video" && s.fractionLost != null) {
+      // Broadcaster side: the viewer's receiver reports its loss back over RTCP.
+      sample.lossPct = s.fractionLost * 100;
+    }
+  }
+  return sample;
+}
+
+function rateKbps(before, now, field) {
+  if (before?.[field] == null || now[field] == null) return null;
+  const secs = (now.timestamp - before.timestamp) / 1000;
+  return secs > 0 ? ((now[field] - before[field]) * 8) / secs / 1000 : null;
+}
+
+function lossPct(before, now) {
+  if (!before) return null;
+  const lost = Math.max(0, now.packetsLost - before.packetsLost);
+  const got = now.packetsReceived - before.packetsReceived;
+  return lost + got > 0 ? (lost / (lost + got)) * 100 : 0;
+}
+
+// selectedPair returns the candidate pair ICE settled on, if any.
+function selectedPair(report) {
+  for (const s of report.values()) {
+    if (s.type === "transport" && s.selectedCandidatePairId) {
+      return report.get(s.selectedCandidatePairId);
+    }
+  }
+  // Firefox has no transport stats; it flags the pair itself.
+  for (const s of report.values()) {
+    if (s.type === "candidate-pair" && s.selected) return s;
+  }
+  return null;
+}
+
+function pathOf(report, pair) {
+  if (!pair) return null;
+  const local = report.get(pair.localCandidateId);
+  const remote = report.get(pair.remoteCandidateId);
+  return {
+    local: local?.candidateType,
+    remote: remote?.candidateType,
+    protocol: local?.protocol,
+  };
+}
+
+// reportPath sends the server the "connected" outcome of the viewer's
+// connection, with the path ICE picked (see createPeerConnection).
+async function reportPath(pc) {
+  let path = null;
+  try {
+    const report = await pc.getStats();
+    path = pathOf(report, selectedPair(report));
+  } catch {
+    // Still report the outcome, just without the path.
+  }
+  send({
+    type: "rtc-report",
+    outcome: "connected",
+    localType: path?.local,
+    remoteType: path?.remote,
+    protocol: path?.protocol,
+  });
+}
+
+// pathLabel names how the connection got through: straight between the two
+// addresses (same network or public IPv6), across NAT with an address learned
+// through STUN, or relayed by a TURN server.
+function pathLabel(path) {
+  if (!path) return "conectando…";
+  const types = [path.local, path.remote];
+  if (types.includes("relay")) return "via TURN (relay)";
+  if (types.every((t) => t === "host")) return "P2P direto";
+  return "P2P via NAT (STUN)";
+}
+
+const decimal = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
+
+const LIMIT_LABEL = { none: "nenhum", bandwidth: "banda", cpu: "CPU", other: "outro" };
+
+function fmtBitrate(kbps) {
+  if (kbps == null) return "—";
+  return kbps >= 1000 ? `${decimal.format(kbps / 1000)} Mb/s` : `${Math.round(kbps)} kb/s`;
+}
+
+function fmtFrames(video) {
+  if (!video?.width) return "aguardando vídeo…";
+  return `${video.width}×${video.height} · ${Math.round(video.fps ?? 0)} fps`;
+}
+
+function fmtVideoRate(video) {
+  const codec = video?.codec ? ` (${video.codec})` : "";
+  return `vídeo ${fmtBitrate(video?.kbps)}${codec}`;
+}
+
+function fmtNet(sample) {
+  const parts = [];
+  if (sample.rttMs != null) parts.push(`${Math.round(sample.rttMs)} ms`);
+  if (sample.lossPct != null) parts.push(`perda ${decimal.format(sample.lossPct)}%`);
+  return parts.join(" · ");
+}
+
+function joinParts(...parts) {
+  return parts.filter(Boolean).join(" · ");
+}
+
+// A viewer sees what it receives from the broadcaster.
+function viewerLines(sample) {
+  if (!sample) return ["sem conexão"];
+  return [
+    fmtFrames(sample.video),
+    joinParts(fmtVideoRate(sample.video), `áudio ${fmtBitrate(sample.audio?.kbps)}`),
+    joinParts(pathLabel(sample.path), fmtNet(sample)),
+  ];
+}
+
+// The broadcaster sees what goes out to each viewer — each has its own encoder
+// — and the encoder's bottleneck ("banda" = upload/network, "CPU" = this
+// machine), which says what to fix when quality drops.
+function broadcasterLines(samples) {
+  if (samples.length === 0) return ["ninguém assistindo ainda"];
+  const lines = [];
+  samples.forEach((sample, i) => {
+    if (i > 0) lines.push("");
+    lines.push(joinParts(`espectador ${i + 1}`, sample && pathLabel(sample.path)));
+    if (!sample) {
+      lines.push("sem dados");
+      return;
+    }
+    const limit = sample.video?.limit;
+    lines.push(joinParts(fmtFrames(sample.video), fmtVideoRate(sample.video)));
+    lines.push(
+      joinParts(
+        `áudio ${fmtBitrate(sample.audio?.kbps)}`,
+        fmtNet(sample),
+        limit && `gargalo: ${LIMIT_LABEL[limit] || limit}`,
+      ),
+    );
+  });
+  return lines;
 }
 
 // --- UI state --------------------------------------------------------------
@@ -647,6 +987,7 @@ els.broadcastBtn.addEventListener("click", () => {
 
 els.fullscreenBtn.addEventListener("click", toggleFullscreen);
 document.addEventListener("fullscreenchange", onFullscreenChange);
+els.statsBtn.addEventListener("click", toggleStats);
 
 els.browserWarningClose.addEventListener("click", () => {
   els.browserWarning.hidden = true;
@@ -665,4 +1006,5 @@ els.broadcastBtn.hidden = true;
 
 maybeWarnBrowser();
 applyHashToJoinForm();
+syncStats(); // restore the remembered stats toggle state on the button
 connectSignaling();

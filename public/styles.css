@@ -229,10 +229,53 @@ body {
   border-color: rgba(255, 255, 255, 0.5);
 }
 
+/* A toggle that is on (the stats overlay is showing). */
+.icon-btn[aria-pressed="true"] {
+  background: rgba(59, 110, 165, 0.55);
+  border-color: var(--accent-hover);
+}
+
+/* Right-hand button group; margin-left keeps it right when the volume control
+   is hidden (the broadcaster's preview). */
+.video-controls__buttons {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* The explicit `display` on these would otherwise beat [hidden], which the
+   broadcaster's preview uses to drop volume and fullscreen. */
+.volume[hidden],
+.icon-btn[hidden] {
+  display: none;
+}
+
 .volume {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+/* Live stream numbers, top-left over the video. Never intercepts the mouse, so
+   hovering the window still reveals the controls underneath. */
+.stats-overlay {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  max-width: calc(100% - 20px);
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.62);
+  border-radius: 8px;
+  color: #e6e9ef;
+  font: 0.75rem/1.5 ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  white-space: pre-wrap;
+  pointer-events: none;
+}
+
+/* Blank line between viewers in the broadcaster's list. */
+.stats-overlay > div:empty {
+  height: 0.6em;
 }
 
 .volume__icon {
