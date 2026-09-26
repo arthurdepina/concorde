@@ -5,6 +5,147 @@ leem este arquivo + o `Plano.md` antes de começar. Mais recente no topo.
 
 ---
 
+## Sessão 18 — Quedas: reconexão automática e retomada da sessão (2026-09-26)
+
+Branch: `main`. Passo 3 do `Plano.md`. Backend (Go) + frontend (JS/CSS).
+Testado em Chrome real (headless, ver "Verificado"). Sem custo novo: nada de
+storage, nada de TURN, nada de serviço externo.
+
+**A ideia.** O socket de sinalização **não é a transmissão**: o vídeo vai
+peer-to-peer e não liga para o WebSocket ter morrido. Então a queda do socket
+deixou de derrubar a sala. O **assento** (o lugar da pessoa na sala) passa a
+sobreviver à conexão: quando o socket cai, o servidor segura o assento, a página
+reconecta sozinha e **retoma a mesma sessão** — mesmo id, mesma sala, mesmo
+papel — sem que os outros percebam nada. O keepalive da Sessão 14 continua
+evitando a queda; isto aqui é a rede de segurança para quando ela acontece
+mesmo.
+
+**Assento e token (`internal/signaling/resume.go`, novo).**
+- Ao entrar numa sala (criando ou entrando) o cliente recebe um `token` de 24
+  caracteres (~120 bits) no `room-created`/`joined`. É credencial só daquele
+  assento: vive no `sessionStorage` da aba, **nunca** a senha da sala, é revogado
+  assim que o assento é entregue e morre junto da sala. Como não há o que
+  adivinhar em 120 bits, retomada recusada **não** conta para o bloqueio de
+  login da Sessão 16.
+- `Hub.dropped` roda no lugar do `leaveRoom` quando o socket fecha: marca o
+  cliente como `away` e o mantém em `room.clients`. **Ninguém é avisado** — nem
+  `peer-left`, nem `broadcast-stopped` —, então o P2P de quem assiste segue
+  tocando. `Client.away` é atômico porque o `enqueue` o lê de qualquer goroutine:
+  sem write loop vivo, mensagem para quem está ausente é descartada em silêncio
+  (nada se perde: a retomada responde com o estado inteiro da sala).
+- `Hub.resumeSession` devolve o assento: `resumed {roomId, selfId, role, token,
+  peers}`. A tomada é **incondicional**, mesmo que o socket antigo ainda pareça
+  vivo — o navegador percebe o link morto muito antes do nosso keepalive, então a
+  página costuma voltar antes de o servidor ter enterrado a conexão anterior; a
+  velha é fechada ali (fora do lock). O token **rotaciona** a cada retomada.
+- `Hub.expireAway` (via `time.AfterFunc`, com `recoverPanic`) libera o assento
+  quando a carência acaba — aí sim sai o `peer-left` de sempre.
+- `RESUME_GRACE_SECONDS` (default **30**; `≤0` desliga tudo e volta o
+  comportamento anterior, inclusive sem emitir token).
+
+**Quem transmite é caso à parte.** A janela dele **não** são 30 s: é o **TTL da
+sala**. Quando cai, a sala deixa de contar como "transmitindo" (`broadcasting =
+false`, `lastActive` reiniciado) e o relógio do TTL vira exatamente o prazo para
+ele voltar e **retomar o papel**. Se não voltar, o reaper fecha a sala e solta os
+espectadores — é isto que enterra a **sala zumbi** (sala de pé que ninguém pode
+transmitir). Na volta, a página reenvia `broadcast-start` e a sala conta como
+viva de novo.
+
+**"Sair" é diferente de cair.** `leave-room` de quem transmite **fecha a sala na
+hora** (`room-closed` com razão nova `broadcaster-left` → "Quem transmite saiu da
+sala."): a sala só existe para a transmissão dele. Sair também revoga o token. De
+quem assiste, `leave-room` segue sendo só uma saída.
+
+**Frontend (`public/app.js`).**
+- **Reconexão com espera crescente:** 1 s, 2 s, 4 s… até 20 s, com ruído de ±20%
+  para várias páginas não voltarem em bloco depois da mesma queda. O `close`
+  antigo derrubava a sala (`leaveLocal`) — agora só muda o status e agenda a
+  volta. O handler de `error` saiu (o `close` sempre vem em seguida, e o retry
+  mora lá). `online` e a aba voltando ao foco (`visibilitychange`) tentam na
+  hora, sem esperar o timer — celular e notebook congelam aba de fundo, e aí o
+  socket já está morto quando você olha de novo.
+- **Sessão:** `state.resume` na memória (funciona mesmo com storage bloqueado) +
+  espelho no `sessionStorage` (`concorde.session`), que atravessa **F5** e morre
+  com a aba. Na volta do socket, manda `resume-session`.
+- **Recuperação da mídia (`recoverMedia`, só depois de `resumed`):** na maioria
+  das vezes não há nada a fazer — as conexões P2P atravessaram a queda intactas.
+  É para quando a mesma queda levou a mídia junto: quem transmite reoferece a
+  quem não alcança mais (`isLiveConnection`), quem assiste pede oferta nova pelo
+  payload novo `need-offer` (relay comum, zero backend). Também fecha conexões
+  com quem saiu enquanto estávamos fora — a lista de `peers` do `resumed` é a
+  verdade, não o que a página lembrava. Com isso **F5 também volta pra sala**, e
+  com vídeo.
+- **Status com três estados:** "conectado" / "reconectando…" (âmbar, `--wait`,
+  quando ainda temos assento pra voltar) / "desconectado". O vídeo continua na
+  tela o tempo todo.
+- O toast de "Falha na conexão com quem transmite" agora fica quieto se a
+  sinalização também caiu: é a mesma queda, já estamos voltando e a retomada pede
+  oferta nova. `rtc-report` continua saindo.
+- `#CODIGO` só sai da barra no **"Sair"** (e quando a sala acaba de fato). Se a
+  retomada falhar — ausente tempo demais —, o código **fica** na barra, o campo é
+  preenchido e o foco vai pra senha: a sala provavelmente ainda está lá.
+- `dropPeerConnection` (fecha sem mexer no `<video>`, pra imagem não piscar) sai
+  de dentro do `closePeer` e passa a ser usado também no `offerTo`, que antes
+  vazava a conexão antiga ao reofertar.
+- Botão "Transmitir" fica desabilitado sem servidor (começar é conversa com todo
+  mundo) — mas **"Parar" sempre funciona**, que é local. Formulários do lobby
+  avisam em vez de engolir o clique (`requireConnection`).
+
+**Observabilidade.** Contadores novos em `/admin/metrics`, no heartbeat `[stats]`
+e como tiles no painel: "Quedas de socket", "Sessões retomadas", "Sessões
+perdidas", "Retomadas recusadas" — retomadas muito abaixo das quedas significa
+página que não está conseguindo voltar. `/admin/rooms` ganhou `away`, e a coluna
+de participantes mostra "2 (1 ausente)": sala cheia de gente ausente é sala que
+ninguém está vendo. Logs: `[room] X: viewer Y away (30s to come back)`,
+`broadcaster Y away (room idle from now)`, `Y resumed as viewer`, `Y never came
+back, seat released`.
+
+**Verificado.** `go build`/`vet`/`test ./...` limpos, gofmt conferido (sem CR).
+Testes novos (`resume_test.go`, 10): retomada mantém id/sala/papel e a próxima
+mensagem que o outro lado recebe é o sinal de quem voltou (prova de que não saiu
+`peer-left`/`peer-joined`); token rotaciona e o gasto não serve mais; token
+desconhecido → `resume-failed` + métrica; tomada de socket ainda aberto; assento
+abandonado expira e aí sai o `peer-left`; transmissor que cai mantém a sala e
+volta como `broadcaster`; **sala com transmissor ausente é fechada pelo reaper**
+(a sala zumbi); "Sair" do transmissor fecha a sala e mata o token; "Sair" de quem
+assiste não fecha; carência 0 = comportamento antigo, sem token. `node --check`
+nos dois JS.
+
+**Teste ponta a ponta em Chrome real (headless, DevTools Protocol), 22
+checagens, todas passando.** Servidor de teste na porta 3999 (nunca a 3000) e
+Chrome com `--mute-audio`, perfil temporário, captura trocada por canvas
+sintético 1080p + trilha de áudio que não vai a lugar nenhum. Confirmado: o
+vídeo **continua correndo** enquanto o socket do transmissor está morto (8 → 33
+quadros durante a queda) e quem assiste não recebe `peer-left` nem
+`broadcast-stopped`; status vira "reconectando…" e volta pra "conectado" com o
+mesmo id e sala; token rotacionado e guardado; queda do socket **e** do P2P
+juntos → vídeo volta sozinho pelo `need-offer`; **F5 no espectador volta pra
+sala e pro vídeo**; "Sair" do transmissor avisa quem assiste e limpa link e
+token; assento abandonado expira (carência de 3 s); métricas e `away` no painel
+batendo.
+
+> **Como testar aqui de novo** (o harness fica fora do repo, no scratchpad):
+> `app.js` é **ES module**, então `state` não existe no escopo global e
+> `Runtime.evaluate` não enxerga nada. O harness embrulha `WebSocket` e
+> `RTCPeerConnection` num script injetado **antes** do app
+> (`Page.addScriptToEvaluateOnNewDocument`) e lê dali as mensagens recebidas, o
+> socket pra cortar e as conexões pra medir — sem um único gancho de teste no
+> código que vai pro ar. Outra pegadinha: aba headless conta como **oculta**, e
+> página oculta tem timer estrangulado em ~1 Hz — a captura sintética cai pra ~1
+> fps e uma transmissão saudável parece congelada. Precisa de
+> `--disable-background-timer-throttling`, `--disable-renderer-backgrounding`,
+> `--disable-backgrounding-occluded-windows` e
+> `Emulation.setFocusEmulationEnabled`.
+
+**Não verificado aqui:** `-race` não roda nesta máquina (só há gcc 32-bit; o
+detector precisa de cgo 64-bit) — a análise das corridas foi feita na mão: tudo
+que a retomada escreve (`id`, `room`, `role`, `token`, `expiry`) é escrito sob
+`Hub.mu`, e `away` é atômico justamente porque o `enqueue` o lê fora do lock.
+Falta também o comportamento atrás do túnel real, com NAT de verdade e troca de
+rede no celular — isso é a tua validação.
+
+---
+
 ## Sessão 17 — Qualidade: estatísticas, bitrate, áudio estéreo e medição de TURN (2026-09-25)
 
 Branch: `main`. Passo 2 do `Plano.md`. Frontend (JS/HTML/CSS) + um pedaço de

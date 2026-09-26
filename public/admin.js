@@ -40,6 +40,13 @@ const STAT_FIELDS = [
   { key: "p2pConnected", label: "P2P conectadas" },
   { key: "p2pFailed", label: "P2P sem conexão (TURN)", alarm: true },
   { key: "p2pDropped", label: "P2P caídas", alarm: true },
+  // Sockets that dropped with their seat held, and how that ended. "Retomadas"
+  // well below "Quedas de socket" means pages are not making it back — a
+  // reconnect that is failing, or a grace period too short.
+  { key: "sessionsAway", label: "Quedas de socket" },
+  { key: "sessionsResumed", label: "Sessões retomadas" },
+  { key: "sessionsExpired", label: "Sessões perdidas" },
+  { key: "resumesRejected", label: "Retomadas recusadas" },
 ];
 
 // How often the dashboard re-fetches while open.
@@ -147,8 +154,12 @@ function renderRooms(rooms) {
     code.className = "admin__code";
     code.textContent = room.id;
 
+    // Someone whose socket dropped still holds their seat, so say so — a room
+    // that looks busy may be a room everyone has been disconnected from.
     const people = document.createElement("td");
-    people.textContent = String(room.participants);
+    people.textContent = room.away > 0
+      ? `${room.participants} (${room.away} ausente${room.away > 1 ? "s" : ""})`
+      : String(room.participants);
 
     const live = document.createElement("td");
     live.textContent = room.broadcasting ? "🔴 sim" : "não";

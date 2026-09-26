@@ -9,6 +9,7 @@
   --accent-hover: #4a82c0;
   --ok: #4a9d6b;
   --off: #6b7280;
+  --wait: #c8a04a;
   --danger: #b4453b;
   --danger-hover: #c85449;
   --error-text: #d4756b;
@@ -626,6 +627,11 @@ a.btn-secondary {
 
 .status--on {
   color: var(--ok);
+}
+
+/* Socket down but the seat is still ours: on the way back, not gone. */
+.status--wait {
+  color: var(--wait);
 }
 
 /* --- broadcast button live state ----------------------------------------- */

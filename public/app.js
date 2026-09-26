@@ -75,30 +75,52 @@ const AUDIO_BITRATE = 128_000; // bits/s, Opus stereo
 
 const state = {
   socket: null,
+  connected: false,
   selfId: null,
   roomId: null,
   role: null,
   peers: new Map(), // peerId -> role
   pcs: new Map(), // peerId -> RTCPeerConnection
   localStream: null, // broadcaster's captured tab
+  resume: null, // { token, roomId } to claim our seat back after a drop
   pendingForm: "join", // which lobby form a server error belongs to
 };
 
 // --- connection ------------------------------------------------------------
 
+// The signaling socket is not the stream: the media runs peer-to-peer and does
+// not care that this socket died, so a drop no longer tears the room down. The
+// page reconnects on its own, backing off so an outage is not answered with a
+// flood, and claims its seat back with the token the server issued (see
+// "session" below) — same room, same role, nobody else the wiser.
+const RECONNECT_MIN_MS = 1000;
+const RECONNECT_MAX_MS = 20000;
+
+let reconnectAttempts = 0;
+let reconnectTimer = null;
+
 function connectSignaling() {
+  clearTimeout(reconnectTimer);
+  reconnectTimer = null;
+
   const proto = location.protocol === "https:" ? "wss" : "ws";
   const socket = new WebSocket(`${proto}://${location.host}/ws`);
   state.socket = socket;
 
-  socket.addEventListener("open", () => setConnected(true));
-  socket.addEventListener("close", () => {
-    const wasInRoom = state.roomId !== null;
-    setConnected(false);
-    leaveLocal();
-    if (wasInRoom) showToast("Conexão com o servidor perdida.", "error");
+  socket.addEventListener("open", () => {
+    reconnectAttempts = 0;
+    setConnected(true);
+    // Back from a drop (or a page reload, which keeps the token in
+    // sessionStorage): ask for the seat we left behind.
+    if (state.resume) send({ type: "resume-session", token: state.resume.token });
   });
-  socket.addEventListener("error", () => setConnected(false));
+  socket.addEventListener("close", () => {
+    if (socket !== state.socket) return; // a socket we already replaced
+    setConnected(false);
+    scheduleReconnect();
+  });
+  // No "error" handler: a failed connection always fires close right after, and
+  // that is where the retry lives.
   socket.addEventListener("message", (event) => {
     let msg;
     try {
@@ -110,9 +132,61 @@ function connectSignaling() {
   });
 }
 
+// scheduleReconnect waits a little longer after each failure (1s, 2s, 4s… up to
+// RECONNECT_MAX_MS), with jitter so several pages coming back from the same
+// outage do not knock on the door in lockstep.
+function scheduleReconnect() {
+  if (reconnectTimer) return;
+  const backoff = Math.min(RECONNECT_MIN_MS * 2 ** reconnectAttempts, RECONNECT_MAX_MS);
+  reconnectAttempts += 1;
+  reconnectTimer = setTimeout(connectSignaling, Math.round(backoff * (0.8 + Math.random() * 0.4)));
+}
+
+// reconnectNow skips the wait. The browser telling us the network is back, or
+// the tab coming to the front, is better news than any timer.
+function reconnectNow() {
+  const readyState = state.socket?.readyState;
+  if (readyState === WebSocket.OPEN || readyState === WebSocket.CONNECTING) return;
+  reconnectAttempts = 0;
+  connectSignaling();
+}
+
 function send(msg) {
   if (state.socket?.readyState === WebSocket.OPEN) {
     state.socket.send(JSON.stringify(msg));
+  }
+}
+
+// --- session ---------------------------------------------------------------
+
+// The seat's resume token. It is kept in memory (so an in-page reconnect works
+// even where storage is blocked) and mirrored into sessionStorage, which carries
+// it across a page reload and dies with the tab. The room password is never
+// stored — the token only vouches for the seat we already had.
+const SESSION_KEY = "concorde.session";
+
+function rememberSession(token, roomId) {
+  state.resume = token ? { token, roomId } : null;
+  try {
+    if (state.resume) sessionStorage.setItem(SESSION_KEY, JSON.stringify(state.resume));
+    else sessionStorage.removeItem(SESSION_KEY);
+  } catch {
+    // Storage blocked (private window, etc.): resuming still works until reload.
+  }
+}
+
+function forgetSession() {
+  rememberSession(null, null);
+}
+
+// restoreSession reads back what a previous page load left, so opening the room
+// again — or just hitting reload — walks straight back in.
+function restoreSession() {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(SESSION_KEY) || "null");
+    if (saved?.token) state.resume = saved;
+  } catch {
+    state.resume = null;
   }
 }
 
@@ -123,10 +197,14 @@ function handleMessage(msg) {
     case "hello":
       break;
     case "room-created":
-      enterRoom(msg.roomId, msg.selfId, msg.role, []);
+      enterRoom(msg.roomId, msg.selfId, msg.role, [], msg.token);
       break;
     case "joined":
-      enterRoom(msg.roomId, msg.selfId, msg.role, msg.peers);
+      enterRoom(msg.roomId, msg.selfId, msg.role, msg.peers, msg.token);
+      break;
+    case "resumed":
+      enterRoom(msg.roomId, msg.selfId, msg.role, msg.peers, msg.token);
+      recoverMedia();
       break;
     case "peer-joined":
       state.peers.set(msg.peerId, msg.role);
@@ -148,10 +226,18 @@ function handleMessage(msg) {
       handleBroadcastStopped();
       break;
     case "room-closed":
+      // We may have left already (the broadcaster's own "Sair" closes the room);
+      // no need to announce the end of something we just ended ourselves.
+      if (state.roomId === null) break;
+      forgetSession();
       leaveLocal();
       showToast(roomClosedText(msg.reason), "info");
       break;
     case "error":
+      if (msg.code === "resume-failed") {
+        handleResumeFailed();
+        break;
+      }
       showError(errorText(msg.code, msg.message));
       break;
     default:
@@ -173,7 +259,22 @@ function errorText(code, fallback) {
 function roomClosedText(reason) {
   if (reason === "closed-by-admin") return "A sala foi fechada pelo admin.";
   if (reason === "idle") return "A sala foi encerrada por inatividade.";
+  if (reason === "broadcaster-left") return "Quem transmite saiu da sala.";
   return "A sala foi encerrada.";
+}
+
+// The seat is gone: we were away too long, or the room ended while we were. Back
+// to the lobby — but the room code stays in the address bar, so if the room is
+// still up, rejoining is just typing the password again.
+function handleResumeFailed() {
+  const wasInRoom = state.roomId !== null;
+  forgetSession();
+  leaveLocal({ keepLink: true });
+  showToast(
+    wasInRoom ? "A conexão caiu por tempo demais. Entre na sala de novo." : "Sua sessão expirou.",
+    "info",
+  );
+  applyHashToJoinForm(); // code still in the bar: pre-fill it and go to the password
 }
 
 // --- WebRTC ----------------------------------------------------------------
@@ -202,16 +303,16 @@ function createPeerConnection(peerId) {
       everConnected = true;
       if (state.role === "viewer") reportPath(pc);
     }
-    if (pc.connectionState === "failed") {
+    if (pc.connectionState === "failed" && state.role === "viewer") {
       console.warn("[rtc] connection to", peerId, "failed");
+      // Never connected: no path without TURN. Connected before: lost midway.
+      send({ type: "rtc-report", outcome: everConnected ? "dropped" : "failed" });
       // A viewer has a single connection (to the broadcaster); if it fails there
-      // is nothing left on screen, so it is worth surfacing. For the broadcaster,
-      // one viewer dropping is not worth a popup.
-      if (state.role === "viewer") {
-        showToast("Falha na conexão com quem transmite.");
-        // Never connected: no path without TURN. Connected before: lost midway.
-        send({ type: "rtc-report", outcome: everConnected ? "dropped" : "failed" });
-      }
+      // is nothing left on screen, so it is worth surfacing — unless signaling
+      // is down too, in which case the same outage took both, we are already on
+      // our way back, and the resume will ask for a fresh offer. (For the
+      // broadcaster, one viewer dropping is never worth a popup.)
+      if (state.connected) showToast("Falha na conexão com quem transmite.");
     }
   });
 
@@ -222,6 +323,9 @@ function createPeerConnection(peerId) {
 // offerTo (broadcaster) opens a connection to a viewer, attaches the captured
 // tracks, and sends the offer.
 async function offerTo(peerId) {
+  // Any earlier connection to this peer is superseded by the offer we are about
+  // to make (a resumed session, a restarted share), so drop it first.
+  dropPeerConnection(peerId);
   const pc = createPeerConnection(peerId);
   const stream = state.localStream;
   for (const track of stream.getTracks()) {
@@ -253,11 +357,7 @@ async function handleSignal(from, payload) {
         // A fresh offer supersedes any earlier connection to this peer (e.g. the
         // broadcaster stopped and started again), so drop the stale one first
         // instead of leaking it under the same peer id.
-        const stale = state.pcs.get(from);
-        if (stale) {
-          stale.close();
-          state.pcs.delete(from);
-        }
+        dropPeerConnection(from);
         const pc = createPeerConnection(from);
         pc.addEventListener("track", (e) => showRemoteStream(e.streams[0]));
         await pc.setRemoteDescription(payload.sdp);
@@ -277,6 +377,12 @@ async function handleSignal(from, payload) {
           });
           await flushCandidates(pc);
         }
+        break;
+      }
+      case "need-offer": {
+        // A viewer came back from a drop with a dead connection and is asking
+        // for a fresh one. Only the broadcaster answers, and only while sharing.
+        if (state.role === "broadcaster" && state.localStream) offerTo(from);
         break;
       }
       case "ice": {
@@ -410,17 +516,60 @@ function stopMedia() {
   hideVideo();
 }
 
-function closePeer(peerId) {
+// dropPeerConnection closes and forgets the connection to a peer, if any. Unlike
+// closePeer it leaves the video element alone: the caller is replacing the
+// connection, not ending the stream, so the picture must not flicker.
+function dropPeerConnection(peerId) {
   const pc = state.pcs.get(peerId);
-  if (pc) {
-    pc.close();
-    state.pcs.delete(peerId);
-  }
+  if (!pc) return;
+  pc.close();
+  state.pcs.delete(peerId);
+}
+
+function closePeer(peerId) {
+  dropPeerConnection(peerId);
   // A viewer only ever connects to the broadcaster; if that is gone, so is the
   // stream on screen.
   if (state.role === "viewer" && state.pcs.size === 0) {
     hideVideo();
   }
+}
+
+// recoverMedia runs after a resumed session. The peer connections never ran on
+// the signaling socket, so most of the time they sailed through the drop and
+// there is nothing to do here. This is for when the same outage took the media
+// with it: the broadcaster re-offers to whoever it can no longer reach, and a
+// viewer asks the broadcaster for a fresh offer.
+function recoverMedia() {
+  // People may have come and gone while we were away, and the resumed peer list
+  // is the truth — so let go of anyone no longer in the room.
+  for (const peerId of state.pcs.keys()) {
+    if (!state.peers.has(peerId)) closePeer(peerId);
+  }
+
+  if (state.role === "broadcaster") {
+    if (!state.localStream) return; // not sharing: nothing to restore
+    // The room stopped counting as live the moment we dropped; take it back, or
+    // the TTL reaper would close a room that is in fact streaming.
+    send({ type: "broadcast-start" });
+    for (const peerId of state.peers.keys()) {
+      if (!isLiveConnection(state.pcs.get(peerId))) offerTo(peerId);
+    }
+    return;
+  }
+
+  for (const [peerId, role] of state.peers) {
+    if (role === "broadcaster" && !isLiveConnection(state.pcs.get(peerId))) {
+      sendSignal(peerId, { kind: "need-offer" });
+    }
+  }
+}
+
+// A connection that is up, or still has a fair chance of getting there on its
+// own. "disconnected" does not count: it can recover by itself, but a fresh
+// offer is cheaper than waiting to find out.
+function isLiveConnection(pc) {
+  return Boolean(pc) && ["new", "connecting", "connected"].includes(pc.connectionState);
 }
 
 // The broadcaster stopped sharing on purpose (server relayed broadcast-stopped).
@@ -724,17 +873,28 @@ function broadcasterLines(samples) {
 
 // --- UI state --------------------------------------------------------------
 
+// Three states, because a dropped socket is no longer the end of anything: with
+// a seat to go back to we are on our way back ("reconectando…"), and the stream
+// on screen keeps playing throughout.
 function setConnected(connected) {
-  els.status.textContent = connected ? "conectado" : "desconectado";
+  state.connected = connected;
+  const reconnecting = !connected && Boolean(state.resume);
+  els.status.textContent = connected ? "conectado" : reconnecting ? "reconectando…" : "desconectado";
   els.status.classList.toggle("status--on", connected);
-  els.status.classList.toggle("status--off", !connected);
+  els.status.classList.toggle("status--wait", reconnecting);
+  els.status.classList.toggle("status--off", !connected && !reconnecting);
+  updateBroadcastButton();
 }
 
-function enterRoom(roomId, selfId, role, peers) {
+// enterRoom shows the room, whether we just created it, just joined it, or just
+// got our seat back — in which case peers and token are the server's current
+// truth, not what this page remembered.
+function enterRoom(roomId, selfId, role, peers, token) {
   state.roomId = roomId;
   state.selfId = selfId;
   state.role = role;
-  state.peers = new Map(peers.map((p) => [p.id, p.role]));
+  state.peers = new Map((peers || []).map((p) => [p.id, p.role]));
+  rememberSession(token, roomId);
 
   els.roomCode.textContent = roomId;
   els.roomRole.textContent = ROLE_LABEL[role] || role;
@@ -747,9 +907,12 @@ function enterRoom(roomId, selfId, role, peers) {
   els.roomView.hidden = false;
 }
 
-function leaveLocal() {
+// leaveLocal drops back to the lobby. keepLink leaves the room code in the
+// address bar for the cases where the room may well still be there and only our
+// seat is gone — the friend just types the password again.
+function leaveLocal({ keepLink = false } = {}) {
   stopMedia();
-  clearRoomHash();
+  if (!keepLink) clearRoomHash();
 
   state.roomId = null;
   state.selfId = null;
@@ -761,11 +924,16 @@ function leaveLocal() {
   els.lobby.hidden = false;
 }
 
-// The broadcast button only makes sense for the room's broadcaster.
+// The broadcast button only makes sense for the room's broadcaster — and only
+// while the server can hear us, since starting a share is a conversation with
+// every viewer.
 function updateBroadcastButton() {
   const isBroadcaster = state.role === "broadcaster";
   const live = Boolean(state.localStream);
   els.broadcastBtn.hidden = !isBroadcaster;
+  // Stopping must always be possible: that is local, and a blip should not trap
+  // anyone into sharing their tab.
+  els.broadcastBtn.disabled = !state.connected && !live;
   els.broadcastBtn.classList.toggle("is-live", live);
   if (isBroadcaster) {
     els.broadcastBtn.textContent = live ? "Parar transmissão" : "Transmitir";
@@ -813,6 +981,16 @@ function showToast(text, kind = "error") {
   el.textContent = text;
   els.toasts.appendChild(el);
   setTimeout(() => el.remove(), 6000);
+}
+
+// requireConnection guards the actions that are nothing but a request to the
+// server. Without it a click during a reconnect would quietly do nothing, since
+// send() drops what it cannot deliver.
+function requireConnection() {
+  if (state.connected) return true;
+  showToast("Sem conexão com o servidor. Tentando reconectar…");
+  reconnectNow();
+  return false;
 }
 
 // --- browser support -------------------------------------------------------
@@ -933,6 +1111,7 @@ function applyHashToJoinForm() {
 
 els.createForm.addEventListener("submit", (e) => {
   e.preventDefault();
+  if (!requireConnection()) return;
   state.pendingForm = "create";
   clearError();
   send({
@@ -945,6 +1124,7 @@ els.createForm.addEventListener("submit", (e) => {
 
 els.joinForm.addEventListener("submit", (e) => {
   e.preventDefault();
+  if (!requireConnection()) return;
   state.pendingForm = "join";
   clearError();
   send({
@@ -971,8 +1151,12 @@ els.copyCodeBtn.addEventListener("click", async () => {
   }
 });
 
+// Leaving is the one deliberate goodbye: the seat is given up, the token with
+// it, and the room code leaves the address bar. For a broadcaster the server
+// closes the whole room — it only existed for their stream.
 els.leaveBtn.addEventListener("click", () => {
   send({ type: "leave-room" });
+  forgetSession();
   leaveLocal();
 });
 
@@ -1001,10 +1185,19 @@ els.volume.addEventListener("input", () => {
 // with) pre-fills the join form.
 window.addEventListener("hashchange", applyHashToJoinForm);
 
+// The browser knows before any timer does that there is a point in trying again:
+// the network came back, or the tab did (phones and laptops freeze background
+// tabs, so the socket is often already dead by the time we are looked at again).
+window.addEventListener("online", reconnectNow);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") reconnectNow();
+});
+
 // Hidden until we know we are a room's broadcaster.
 els.broadcastBtn.hidden = true;
 
 maybeWarnBrowser();
+restoreSession(); // a reload can walk straight back into the room
 applyHashToJoinForm();
 syncStats(); // restore the remembered stats toggle state on the button
 connectSignaling();
