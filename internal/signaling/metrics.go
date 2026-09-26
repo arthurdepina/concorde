@@ -28,6 +28,13 @@ type Metrics struct {
 	// loginLockouts counts visitors locked out for too many wrong passwords —
 	// someone guessing, or a friend fumbling theirs.
 	loginLockouts atomic.Int64
+	// Peer connection outcomes reported by viewers (see Hub.rtcReport). Media
+	// never passes through the server, so these are its only view of whether
+	// P2P works: p2pFailed is how often STUN alone was not enough — the case
+	// for adding TURN.
+	p2pConnected atomic.Int64
+	p2pFailed    atomic.Int64
+	p2pDropped   atomic.Int64
 }
 
 // MetricsSnapshot is a point-in-time, serializable view of the counters plus the
@@ -49,6 +56,9 @@ type MetricsSnapshot struct {
 	AcceptFailures    int64     `json:"acceptFailures"`
 	PanicsRecovered   int64     `json:"panicsRecovered"`
 	LoginLockouts     int64     `json:"loginLockouts"`
+	P2PConnected      int64     `json:"p2pConnected"`
+	P2PFailed         int64     `json:"p2pFailed"`
+	P2PDropped        int64     `json:"p2pDropped"`
 }
 
 // snapshotMetrics builds a MetricsSnapshot. It takes h.mu only to count live
@@ -82,5 +92,8 @@ func (h *Hub) snapshotMetrics() MetricsSnapshot {
 		AcceptFailures:    m.acceptFailures.Load(),
 		PanicsRecovered:   m.panicsRecovered.Load(),
 		LoginLockouts:     m.loginLockouts.Load(),
+		P2PConnected:      m.p2pConnected.Load(),
+		P2PFailed:         m.p2pFailed.Load(),
+		P2PDropped:        m.p2pDropped.Load(),
 	}
 }

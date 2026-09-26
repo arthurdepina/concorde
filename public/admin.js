@@ -35,6 +35,11 @@ const STAT_FIELDS = [
   { key: "acceptFailures", label: "Falhas de conexão", alarm: true },
   { key: "panicsRecovered", label: "Panics contidos", alarm: true },
   { key: "loginLockouts", label: "Bloqueios de login", alarm: true },
+  // P2P outcomes reported by viewers: "sem conexão" is a pair STUN alone could
+  // not connect — each one is a case for adding TURN.
+  { key: "p2pConnected", label: "P2P conectadas" },
+  { key: "p2pFailed", label: "P2P sem conexão (TURN)", alarm: true },
+  { key: "p2pDropped", label: "P2P caídas", alarm: true },
 ];
 
 // How often the dashboard re-fetches while open.

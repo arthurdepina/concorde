@@ -339,10 +339,11 @@ func (h *Hub) StartStatsLogger(ctx context.Context) {
 				return
 			case <-ticker.C:
 				s := h.snapshotMetrics()
-				log.Printf("[stats] uptime=%ds conns=%d rooms=%d participants=%d | opened=%d closed=%d roomsCreated=%d roomsClosed=%d relayed=%d errors=%d dropped=%d acceptFail=%d panics=%d",
+				log.Printf("[stats] uptime=%ds conns=%d rooms=%d participants=%d | opened=%d closed=%d roomsCreated=%d roomsClosed=%d relayed=%d errors=%d dropped=%d acceptFail=%d panics=%d lockouts=%d | p2p connected=%d failed=%d dropped=%d",
 					s.UptimeSeconds, s.ActiveConnections, s.ActiveRooms, s.Participants,
 					s.ConnectionsOpened, s.ConnectionsClosed, s.RoomsCreated, s.RoomsClosed,
-					s.SignalsRelayed, s.ErrorsSent, s.DroppedMessages, s.AcceptFailures, s.PanicsRecovered)
+					s.SignalsRelayed, s.ErrorsSent, s.DroppedMessages, s.AcceptFailures, s.PanicsRecovered,
+					s.LoginLockouts, s.P2PConnected, s.P2PFailed, s.P2PDropped)
 			}
 		}
 	}()

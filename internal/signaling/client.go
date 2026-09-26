@@ -116,6 +116,8 @@ func (c *Client) readLoop(ctx context.Context) {
 			c.hub.setBroadcasting(c, true)
 		case "broadcast-stop":
 			c.hub.setBroadcasting(c, false)
+		case "rtc-report":
+			c.hub.rtcReport(c, msg)
 		case "leave-room":
 			c.hub.leaveRoom(c)
 		default:

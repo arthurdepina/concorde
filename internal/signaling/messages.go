@@ -37,7 +37,25 @@ type inbound struct {
 	// signal: relay a WebRTC payload (SDP/ICE) to another peer in the room.
 	To      string          `json:"to"`
 	Payload json.RawMessage `json:"payload"`
+
+	// rtc-report: how a viewer's peer connection to the broadcaster turned out
+	// (see Hub.rtcReport). The candidate types and protocol describe the path ICE
+	// picked and only come with the "connected" outcome.
+	Outcome    string `json:"outcome"`
+	LocalType  string `json:"localType"`
+	RemoteType string `json:"remoteType"`
+	Protocol   string `json:"protocol"`
 }
+
+// Outcomes a viewer can report for its peer connection, in inbound.Outcome.
+const (
+	// ICE found a path and media can flow.
+	rtcConnected = "connected"
+	// ICE never found a path: with only STUN, this pair would need a TURN relay.
+	rtcFailed = "failed"
+	// Connected at first, then lost mid-stream (network change, dead link).
+	rtcDropped = "dropped"
+)
 
 // peerInfo describes another participant to a client.
 type peerInfo struct {
