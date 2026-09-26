@@ -19,6 +19,7 @@ const (
 	errNotInRoom       = "not-in-room"
 	errPeerNotFound    = "peer-not-found"
 	errTooManyAttempts = "too-many-attempts"
+	errResumeFailed    = "resume-failed"
 )
 
 // inbound is any message a client sends us. Only the fields relevant to Type
@@ -33,6 +34,10 @@ type inbound struct {
 
 	// join-room.
 	RoomID string `json:"roomId"`
+
+	// resume-session: the token that claims a seat back after a reconnect (see
+	// resume.go). Issued when the client entered the room; never the password.
+	Token string `json:"token"`
 
 	// signal: relay a WebRTC payload (SDP/ICE) to another peer in the room.
 	To      string          `json:"to"`
@@ -78,11 +83,15 @@ func newError(code, message string) errorMsg {
 	return errorMsg{Type: "error", Code: code, Message: message}
 }
 
+// Entering a room — however it happens — always comes with the resume token for
+// the seat just taken, so the page can claim it back if its socket drops. The
+// token is empty when resuming is disabled (see Hub.resumeGrace).
 type roomCreatedMsg struct {
 	Type   string `json:"type"`
 	RoomID string `json:"roomId"`
 	SelfID string `json:"selfId"`
 	Role   string `json:"role"`
+	Token  string `json:"token"`
 }
 
 type joinedMsg struct {
@@ -90,6 +99,19 @@ type joinedMsg struct {
 	RoomID string     `json:"roomId"`
 	SelfID string     `json:"selfId"`
 	Role   string     `json:"role"`
+	Token  string     `json:"token"`
+	Peers  []peerInfo `json:"peers"`
+}
+
+// resumedMsg confirms a reconnecting page got its seat back, with the room state
+// as it stands now — the page may have missed peers coming and going while its
+// socket was down, so this list, not what it remembered, is the truth.
+type resumedMsg struct {
+	Type   string     `json:"type"`
+	RoomID string     `json:"roomId"`
+	SelfID string     `json:"selfId"`
+	Role   string     `json:"role"`
+	Token  string     `json:"token"`
 	Peers  []peerInfo `json:"peers"`
 }
 
@@ -104,9 +126,9 @@ type peerLeftMsg struct {
 	PeerID string `json:"peerId"`
 }
 
-// roomClosedMsg tells everyone in a room that it is gone: either reaped for being
-// idle too long or shut down from the admin panel. The reason is a stable code
-// the frontend can branch on ("idle" | "closed-by-admin").
+// roomClosedMsg tells everyone in a room that it is gone: reaped for being idle
+// too long, shut down from the admin panel, or given up by the broadcaster it
+// existed for. The reason is a stable code the frontend can branch on.
 type roomClosedMsg struct {
 	Type   string `json:"type"`
 	Reason string `json:"reason"`
@@ -114,8 +136,9 @@ type roomClosedMsg struct {
 
 // Reasons a room can close, sent in roomClosedMsg.
 const (
-	reasonIdle    = "idle"
-	reasonByAdmin = "closed-by-admin"
+	reasonIdle            = "idle"
+	reasonByAdmin         = "closed-by-admin"
+	reasonBroadcasterLeft = "broadcaster-left"
 )
 
 // signalMsg relays a WebRTC payload from one peer to another, tagged with the

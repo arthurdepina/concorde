@@ -32,6 +32,9 @@ type Hub struct {
 
 	mu    sync.Mutex
 	rooms map[string]*Room
+	// resumable indexes every seat by its resume token, so a reconnecting page
+	// finds its place in one lookup; see resume.go.
+	resumable map[string]*Client
 }
 
 // New returns a ready-to-use Hub.
@@ -41,6 +44,7 @@ func New(cfg config.Config) *Hub {
 		startedAt: time.Now(),
 		logins:    newLoginLimiter(cfg.LoginMaxFailures, time.Duration(cfg.LoginLockoutMinutes)*time.Minute),
 		rooms:     make(map[string]*Room),
+		resumable: make(map[string]*Client),
 	}
 }
 
@@ -98,7 +102,9 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 
 	client.readLoop(ctx)
 
-	h.leaveRoom(client)
+	// A closed socket is not the same as leaving: the seat is held for a while
+	// so the page can reconnect into it (see Hub.dropped).
+	h.dropped(client)
 	log.Printf("[ws] client %s disconnected after %s", client.id, time.Since(connectedAt).Round(time.Second))
 }
 
@@ -141,7 +147,13 @@ func (h *Hub) createRoom(c *Client, in inbound) {
 	h.metrics.roomsCreated.Add(1)
 
 	log.Printf("[room] %s created by %s", room.ID, c.id)
-	c.enqueue(roomCreatedMsg{Type: "room-created", RoomID: room.ID, SelfID: c.id, Role: c.role})
+	c.enqueue(roomCreatedMsg{
+		Type:   "room-created",
+		RoomID: room.ID,
+		SelfID: c.id,
+		Role:   c.role,
+		Token:  h.issueTokenLocked(c),
+	})
 }
 
 // joinRoom lets a friend into an existing room, given the right password and
@@ -187,7 +199,14 @@ func (h *Hub) joinRoom(c *Client, in inbound) {
 	c.role = roleViewer
 
 	log.Printf("[room] %s joined by %s (%d/%d)", room.ID, c.id, len(room.clients), h.cfg.MaxParticipants)
-	c.enqueue(joinedMsg{Type: "joined", RoomID: room.ID, SelfID: c.id, Role: c.role, Peers: peers})
+	c.enqueue(joinedMsg{
+		Type:   "joined",
+		RoomID: room.ID,
+		SelfID: c.id,
+		Role:   c.role,
+		Token:  h.issueTokenLocked(c),
+		Peers:  peers,
+	})
 
 	for _, other := range room.clients {
 		if other.id == c.id {
@@ -197,10 +216,20 @@ func (h *Hub) joinRoom(c *Client, in inbound) {
 	}
 }
 
-// leaveRoom removes the client from whatever room it is in, if any.
+// leaveRoom removes the client from whatever room it is in, if any — the
+// deliberate "Sair", not a dropped socket (that is Hub.dropped).
+//
+// A broadcaster leaving on purpose ends the session for everyone: the room only
+// exists for their stream, and letting it outlive them would leave a room nobody
+// can broadcast in.
 func (h *Hub) leaveRoom(c *Client) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+
+	if c.room != nil && c.role == roleBroadcaster && c.room.clients[c.id] == c {
+		h.closeRoomLocked(c.room, reasonBroadcasterLeft)
+		return
+	}
 	h.removeLocked(c)
 }
 
@@ -256,6 +285,7 @@ func (h *Hub) removeLocked(c *Client) {
 	if room == nil {
 		return
 	}
+	h.forgetSeatLocked(c)
 	delete(room.clients, c.id)
 	c.room = nil
 	c.role = ""
@@ -279,6 +309,7 @@ func (h *Hub) removeLocked(c *Client) {
 func (h *Hub) closeRoomLocked(room *Room, reason string) {
 	for _, c := range room.clients {
 		c.enqueue(roomClosedMsg{Type: "room-closed", Reason: reason})
+		h.forgetSeatLocked(c)
 		c.room = nil
 		c.role = ""
 	}
@@ -339,11 +370,12 @@ func (h *Hub) StartStatsLogger(ctx context.Context) {
 				return
 			case <-ticker.C:
 				s := h.snapshotMetrics()
-				log.Printf("[stats] uptime=%ds conns=%d rooms=%d participants=%d | opened=%d closed=%d roomsCreated=%d roomsClosed=%d relayed=%d errors=%d dropped=%d acceptFail=%d panics=%d lockouts=%d | p2p connected=%d failed=%d dropped=%d",
+				log.Printf("[stats] uptime=%ds conns=%d rooms=%d participants=%d | opened=%d closed=%d roomsCreated=%d roomsClosed=%d relayed=%d errors=%d dropped=%d acceptFail=%d panics=%d lockouts=%d | p2p connected=%d failed=%d dropped=%d | seats away=%d resumed=%d expired=%d rejected=%d",
 					s.UptimeSeconds, s.ActiveConnections, s.ActiveRooms, s.Participants,
 					s.ConnectionsOpened, s.ConnectionsClosed, s.RoomsCreated, s.RoomsClosed,
 					s.SignalsRelayed, s.ErrorsSent, s.DroppedMessages, s.AcceptFailures, s.PanicsRecovered,
-					s.LoginLockouts, s.P2PConnected, s.P2PFailed, s.P2PDropped)
+					s.LoginLockouts, s.P2PConnected, s.P2PFailed, s.P2PDropped,
+					s.SessionsAway, s.SessionsResumed, s.SessionsExpired, s.ResumesRejected)
 			}
 		}
 	}()

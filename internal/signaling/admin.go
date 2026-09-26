@@ -14,8 +14,12 @@ import (
 // RoomInfo is the admin panel's view of one open room. It carries no passwords —
 // only what the admin needs to decide whether to close a room.
 type RoomInfo struct {
-	ID           string    `json:"id"`
-	Participants int       `json:"participants"`
+	ID           string `json:"id"`
+	Participants int    `json:"participants"`
+	// Away counts participants whose socket dropped and whose seat is being held
+	// for a reconnect (see resume.go) — they are in Participants too. A room
+	// showing people but all of them away is one nobody is actually looking at.
+	Away         int       `json:"away"`
 	Broadcasting bool      `json:"broadcasting"`
 	CreatedAt    time.Time `json:"createdAt"`
 	LastActive   time.Time `json:"lastActive"`
@@ -126,9 +130,16 @@ func (h *Hub) snapshotRooms() []RoomInfo {
 
 	out := make([]RoomInfo, 0, len(h.rooms))
 	for _, room := range h.rooms {
+		away := 0
+		for _, c := range room.clients {
+			if c.away.Load() {
+				away++
+			}
+		}
 		out = append(out, RoomInfo{
 			ID:           room.ID,
 			Participants: len(room.clients),
+			Away:         away,
 			Broadcasting: room.broadcasting,
 			CreatedAt:    room.createdAt,
 			LastActive:   room.lastActive,

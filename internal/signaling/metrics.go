@@ -35,6 +35,16 @@ type Metrics struct {
 	p2pConnected atomic.Int64
 	p2pFailed    atomic.Int64
 	p2pDropped   atomic.Int64
+	// Seats whose socket dropped (see resume.go), and how those turned out:
+	// resumed by a reconnecting page, or expired because it never came back.
+	// sessionsAway well above sessionsResumed means pages are dropping and not
+	// making it back — a reconnect that is failing, or a grace too short.
+	// resumesRejected counts tokens that no longer matched a seat: normal after
+	// a room closes, suspicious in bulk.
+	sessionsAway    atomic.Int64
+	sessionsResumed atomic.Int64
+	sessionsExpired atomic.Int64
+	resumesRejected atomic.Int64
 }
 
 // MetricsSnapshot is a point-in-time, serializable view of the counters plus the
@@ -59,6 +69,10 @@ type MetricsSnapshot struct {
 	P2PConnected      int64     `json:"p2pConnected"`
 	P2PFailed         int64     `json:"p2pFailed"`
 	P2PDropped        int64     `json:"p2pDropped"`
+	SessionsAway      int64     `json:"sessionsAway"`
+	SessionsResumed   int64     `json:"sessionsResumed"`
+	SessionsExpired   int64     `json:"sessionsExpired"`
+	ResumesRejected   int64     `json:"resumesRejected"`
 }
 
 // snapshotMetrics builds a MetricsSnapshot. It takes h.mu only to count live
@@ -95,5 +109,9 @@ func (h *Hub) snapshotMetrics() MetricsSnapshot {
 		P2PConnected:      m.p2pConnected.Load(),
 		P2PFailed:         m.p2pFailed.Load(),
 		P2PDropped:        m.p2pDropped.Load(),
+		SessionsAway:      m.sessionsAway.Load(),
+		SessionsResumed:   m.sessionsResumed.Load(),
+		SessionsExpired:   m.sessionsExpired.Load(),
+		ResumesRejected:   m.resumesRejected.Load(),
 	}
 }

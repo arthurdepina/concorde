@@ -3,6 +3,7 @@ package signaling
 import (
 	"context"
 	"log"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -22,7 +23,10 @@ const sendBuffer = 32
 // hands them to the hub; a separate write loop drains send so that other
 // goroutines (peers, the hub) can notify this client without blocking.
 //
-// room and role are owned by the hub and only touched while holding Hub.mu.
+// A Client outlives its socket: when the connection drops, the client keeps its
+// seat in the room for a grace period so the page can reconnect and claim it
+// back (see resume.go). id, room, role, token and expiry are owned by the hub
+// and only touched while holding Hub.mu.
 type Client struct {
 	id string
 	// ip is the visitor's address (see clientIP), charged for wrong passwords.
@@ -33,12 +37,27 @@ type Client struct {
 
 	room *Room
 	role string
+
+	// token claims this seat back after a reconnect; empty outside a room.
+	token string
+	// expiry releases the seat once the grace period runs out, unless a resume
+	// stops it first. Only set while away.
+	expiry *time.Timer
+	// away is set while the socket is gone but the seat is still held. It is
+	// atomic because enqueue reads it from any goroutine, with or without the
+	// hub lock: there is no write loop left to drain the buffer, so messages for
+	// an away client are dropped on the floor instead of filling it up. Nothing
+	// is lost by that — a resume answers with the whole room state.
+	away atomic.Bool
 }
 
 // enqueue queues a message for the write loop. It never blocks: if the buffer is
 // full the client is too slow and we drop the message rather than stall the hub
 // (which would freeze every room, since the hub holds a single lock).
 func (c *Client) enqueue(msg any) {
+	if c.away.Load() {
+		return // socket gone, seat held: see Client.away
+	}
 	if _, ok := msg.(errorMsg); ok && c.hub != nil {
 		c.hub.metrics.errorsSent.Add(1)
 	}
@@ -116,6 +135,8 @@ func (c *Client) readLoop(ctx context.Context) {
 			c.hub.setBroadcasting(c, true)
 		case "broadcast-stop":
 			c.hub.setBroadcasting(c, false)
+		case "resume-session":
+			c.hub.resumeSession(c, msg)
 		case "rtc-report":
 			c.hub.rtcReport(c, msg)
 		case "leave-room":

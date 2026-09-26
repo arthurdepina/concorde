@@ -40,6 +40,14 @@ type Config struct {
 	// periodic ping keeps the connection warm. Zero or less disables pinging.
 	WSPingSeconds int
 
+	// How long a participant's seat in a room is held after their socket drops,
+	// so the page can reconnect and carry on in the same room with the same role
+	// and nobody else noticing. The broadcaster is a special case: their window
+	// is the room's TTL, since the room lives for their stream (see
+	// signaling.Hub.dropped). Zero or less disables resuming — a dropped socket
+	// then leaves the room at once.
+	ResumeGraceSeconds int
+
 	// Wrong passwords allowed in a row per visitor (admin and room passwords are
 	// counted separately) before that visitor is locked out for
 	// LoginLockoutMinutes — even the right password is refused meanwhile, so the
@@ -62,6 +70,7 @@ func Load() Config {
 		AllowedOrigins:       envList("ALLOWED_ORIGINS"),
 		StatsIntervalMinutes: envInt("STATS_INTERVAL_MINUTES", 15),
 		WSPingSeconds:        envInt("WS_PING_SECONDS", 30),
+		ResumeGraceSeconds:   envInt("RESUME_GRACE_SECONDS", 30),
 		LoginMaxFailures:     envInt("LOGIN_MAX_FAILURES", 3),
 		LoginLockoutMinutes:  envInt("LOGIN_LOCKOUT_MINUTES", 15),
 	}
