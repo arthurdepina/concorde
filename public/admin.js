@@ -19,6 +19,12 @@ const els = {
   uptime: document.getElementById("uptime"),
   statGrid: document.getElementById("stat-grid"),
   metricsError: document.getElementById("metrics-error"),
+  accounts: document.getElementById("accounts"),
+  accountForm: document.getElementById("account-form"),
+  accountName: document.getElementById("account-name"),
+  accountsBody: document.getElementById("accounts-body"),
+  accountSecret: document.getElementById("account-secret"),
+  accountsError: document.getElementById("accounts-error"),
 };
 
 // The metrics tiles, in display order. `alarm` marks counters that should stay
@@ -98,7 +104,134 @@ els.refreshBtn.addEventListener("click", refresh);
 function showDashboard() {
   els.loginForm.hidden = true;
   els.metrics.hidden = false;
+  els.accounts.hidden = false;
   els.dashboard.hidden = false;
+}
+
+// --- accounts --------------------------------------------------------------
+
+// Who may open a room. The admin itself comes from the server's environment, so
+// it is listed but cannot be edited or deleted here — losing the login that
+// manages the accounts would be a bad way to find that out.
+
+els.accountForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const name = els.accountName.value.trim();
+  if (!name) return;
+  await accountRequest("POST", { name }, `Conta de ${name} criada.`);
+  els.accountName.value = "";
+});
+
+async function refreshAccounts() {
+  els.accountsError.hidden = true;
+  try {
+    const res = await authFetch("/admin/accounts");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    renderAccounts((await res.json()).accounts || []);
+  } catch (err) {
+    els.accountsError.textContent = "Não foi possível carregar as contas.";
+    els.accountsError.hidden = false;
+  }
+}
+
+function renderAccounts(list) {
+  els.accountsBody.innerHTML = "";
+  for (const account of list) {
+    const tr = document.createElement("tr");
+
+    const name = document.createElement("td");
+    name.className = "admin__code";
+    name.textContent = account.name;
+
+    const role = document.createElement("td");
+    role.textContent = account.builtin
+      ? "admin (do .env)"
+      : account.role === "admin"
+        ? "admin"
+        : "transmite";
+
+    const actions = document.createElement("td");
+    if (!account.builtin) {
+      actions.append(
+        accountButton("Nova senha", () =>
+          accountRequest("PUT", { name: account.name }, `Nova senha de ${account.name}.`),
+        ),
+        accountButton("Remover", () => removeAccount(account.name), true),
+      );
+    }
+
+    tr.append(name, role, actions);
+    els.accountsBody.appendChild(tr);
+  }
+}
+
+function accountButton(label, onClick, danger = false) {
+  const btn = document.createElement("button");
+  btn.className = danger ? "btn-secondary btn-danger" : "btn-secondary";
+  btn.type = "button";
+  btn.textContent = label;
+  btn.addEventListener("click", () => onClick(btn));
+  return btn;
+}
+
+function removeAccount(name) {
+  if (!confirm(`Remover a conta de ${name}? Ela não poderá mais abrir salas.`)) return;
+  return accountRequest("DELETE", { name }, `Conta de ${name} removida.`);
+}
+
+// accountRequest runs one change and refreshes the list. A password in the
+// answer is shown once — the server keeps only its hash, so this is the only
+// chance anyone has to copy it.
+async function accountRequest(method, body, done) {
+  els.accountsError.hidden = true;
+  els.accountSecret.hidden = true;
+  try {
+    const res = await authFetch("/admin/accounts", {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(await accountErrorText(res));
+    if (res.status !== 204) {
+      const data = await res.json();
+      if (data.password) showAccountSecret(data.name, data.password, done);
+    }
+    await refreshAccounts();
+  } catch (err) {
+    els.accountsError.textContent = err.message;
+    els.accountsError.hidden = false;
+  }
+}
+
+// The server answers a refused change with a stable code; the wording the admin
+// reads lives here, like every other message on the site.
+const ACCOUNT_ERRORS = {
+  "account-not-found": "Essa conta não existe mais.",
+  "account-exists": "Já existe uma conta com esse usuário.",
+  "account-builtin": "A conta do admin é configurada no servidor (.env), não aqui.",
+  "bad-name": "Use de 1 a 32 caracteres: letras sem acento, números, ponto, traço ou _.",
+  "short-password": "A senha precisa ter pelo menos 10 caracteres.",
+  "long-password": "Essa senha é longa demais (máximo 72 bytes).",
+  "save-failed": "Não foi possível salvar o arquivo de contas.",
+};
+
+async function accountErrorText(res) {
+  try {
+    const { code } = await res.json();
+    if (ACCOUNT_ERRORS[code]) return ACCOUNT_ERRORS[code];
+  } catch {
+    // Not our JSON (a proxy error page, say): fall back to the status.
+  }
+  return `Não foi possível concluir (HTTP ${res.status}).`;
+}
+
+function showAccountSecret(name, password, done) {
+  els.accountSecret.replaceChildren();
+  els.accountSecret.append(
+    `${done} Senha (anote agora, não dá para ver de novo): `,
+    Object.assign(document.createElement("code"), { textContent: password }),
+  );
+  els.accountSecret.hidden = false;
 }
 
 function startAutoRefresh() {
@@ -111,7 +244,7 @@ async function refresh() {
   // Rooms and metrics are independent panels; one failing shouldn't blank the
   // other. Each reports its own error and only the rooms fetch drives the
   // shared status pill.
-  await Promise.all([refreshRooms(), refreshMetrics()]);
+  await Promise.all([refreshRooms(), refreshMetrics(), refreshAccounts()]);
 }
 
 async function refreshRooms() {
@@ -156,6 +289,9 @@ function renderRooms(rooms) {
 
     // Someone whose socket dropped still holds their seat, so say so — a room
     // that looks busy may be a room everyone has been disconnected from.
+    const owner = document.createElement("td");
+    owner.textContent = room.owner || "—";
+
     const people = document.createElement("td");
     people.textContent = room.away > 0
       ? `${room.participants} (${room.away} ausente${room.away > 1 ? "s" : ""})`
@@ -175,7 +311,7 @@ function renderRooms(rooms) {
     btn.addEventListener("click", () => closeRoom(room.id, btn));
     action.appendChild(btn);
 
-    tr.append(code, people, live, idle, action);
+    tr.append(code, owner, people, live, idle, action);
     els.body.appendChild(tr);
   }
 }

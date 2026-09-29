@@ -556,6 +556,50 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* --- accounts ------------------------------------------------------------ */
+
+.admin__hint {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+/* New account: the name field takes the space, the button keeps its size. */
+.admin__newaccount {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.admin__newaccount .field {
+  flex: 1;
+  min-width: 0;
+}
+
+/* A password shown once and never again, so it has to be impossible to miss
+   and easy to select. */
+.admin__secret {
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+.admin__secret code {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 0.95rem;
+  color: var(--accent-hover);
+  user-select: all;
+  word-break: break-all;
+}
+
+/* Two buttons per row, kept from touching each other. */
+.admin__table td > .btn-secondary + .btn-secondary {
+  margin-left: 8px;
+}
+
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));

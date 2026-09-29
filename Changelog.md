@@ -5,6 +5,124 @@ leem este arquivo + o `Plano.md` antes de começar. Mais recente no topo.
 
 ---
 
+## Sessão 19 — Contas de transmissor e senhas só como hash (2026-09-29)
+
+Branch: `main`. Passo 4 do `Plano.md`, com as decisões conversadas antes (ver
+"Decisões"). Backend (Go, pacote novo) + CLI + painel. Testado em Chrome real.
+**Exige uma mudança no teu `.env` antes do próximo deploy** — ver "O que você
+precisa fazer".
+
+**O que muda para quem usa.** Amigos podem abrir a própria sala: você cria uma
+conta para cada um no painel, eles entram com usuário e senha na página
+principal e viram quem transmite naquela sala. O painel de admin continua **só
+seu** — conta de transmissor leva 403 ali. Nenhuma senha fica guardada em lugar
+nenhum: só o hash.
+
+**Decisões (conversadas antes de escrever código):**
+- **Cada um cria a própria sala**, não passar o bastão dentro da mesma sala. A
+  segunda é uma feature bem mais cara (o papel vira mutável, a estrela do WebRTC
+  inverte, e a regra "Sair de quem transmite fecha a sala" da Sessão 18 teria de
+  ser repensada) — fica para se fizer falta.
+- **`accounts.json`**, não SQLite: dez linhas de dados que mudam uma vez por mês
+  não justificam cgo — que, aliás, **não compila nesta máquina** (só há gcc
+  32-bit, como a Sessão 18 descobriu ao tentar `-race`).
+- **bcrypt** (`golang.org/x/crypto`), custo 12 — medido em **263 ms** por
+  verificação aqui.
+- **A senha do admin vira `ADMIN_PASSWORD_HASH` no `.env`**, no mesmo lugar em
+  que já morava. Põe o admin fora do arquivo de contas de propósito: perder ou
+  corromper o `accounts.json` nunca pode trancar você fora do painel que
+  gerencia o `accounts.json`. Sem bootstrap, sem rota de resgate extra.
+
+**Pacote novo `internal/accounts`.** `Store` sobre um JSON, com `Verify`, `Add`,
+`SetPassword`, `Remove`, `List`.
+- **Gravação atômica:** escreve `accounts.json.tmp` e renomeia por cima, com
+  permissão `0600` — uma escrita interrompida nunca deixa meia lista de contas.
+- **Nomes tolerantes:** minúsculas, sem espaços nas pontas, `[a-z0-9._-]{1,32}`.
+  "Ana " e "ana" são a mesma pessoa, não duas.
+- **Regras de senha:** mínimo 10 caracteres; **máximo 72 bytes**, que não é regra
+  nossa — o bcrypt ignora em silêncio o que passa disso, e senha truncada sem
+  avisar é pior que senha recusada.
+- **Arquivo que não dá para confiar para o servidor**: JSON inválido, conta sem
+  hash, nome fora das regras ou `"role":"admin"` (o admin vem do ambiente; um
+  arquivo que diz o contrário foi editado à mão ou adulterado). Subir como se
+  ninguém tivesse conta trancaria todo mundo em silêncio.
+- **Cache de verificação (5 min, esvaziado a cada mudança).** O painel
+  reautentica a cada requisição e faz três a cada 5 s; sem o cache, 263 ms × 3 a
+  cada 5 s manteriam um núcleo ocupado à toa — e o destino disto é um Raspberry
+  Pi. Trocar ou apagar uma senha esvazia o cache, então vale na hora.
+- **Tempo igual para nome que existe e nome que não existe:** quando o nome não
+  existe, compara contra um hash falso fixo. Sem isso, o tempo de resposta diria
+  quem tem conta.
+
+**Servidor.** `adminCredentialsOK` (comparação fixa com o `.env`) saiu; entrou
+`verifyLogin`, que consulta as contas e cobra o erro ao limitador de tentativas
+da Sessão 16 — **fora do `h.mu`**, porque bcrypt é lento de propósito e o hub tem
+um lock só para todas as salas. `createRoom` aceita qualquer conta; o painel
+(`authorizeAdmin`) exige papel `admin` e responde **403** a uma conta de
+transmissor — senha certa não é chute, então não conta para o bloqueio. Código de
+erro `bad-admin` virou `bad-credentials`. A sala agora guarda o **dono**
+(`Room.Owner`), que aparece no log (`[room] X created by ana (id)`) e na coluna
+"De quem" do painel.
+
+**Arranque (três caminhos, nenhum deles com senha em claro):**
+1. `ADMIN_PASSWORD_HASH` presente → usa; valida que é mesmo um hash bcrypt.
+2. `ADMIN_PASSWORD` (o formato antigo) ainda presente → **recusa subir**, dizendo
+   exatamente o que fazer. Aceitar em silêncio desfaria o motivo de ter hash.
+3. Nada configurado → **inventa uma senha forte para aquela execução** e imprime
+   no log. Nunca existe credencial padrão conhecida, e clonar o repo e rodar
+   continua funcionando.
+
+**CLI (`cmd/server/cli.go`).** `concorde hash` (gera a linha do `.env`),
+`concorde account list|add <nome>|passwd <nome>|rm <nome>`, `concorde help`. A
+senha é pedida **sem eco** (`golang.org/x/term`) e confirmada duas vezes — nunca
+vai como argumento (histórico do shell) nem aparece na tela, o que importa numa
+máquina que vive compartilhando tela. Com stdin vindo de pipe, lê a linha normal
+(script); um `bufio.Reader` só para o processo, porque um por prompt engoliria a
+segunda linha.
+
+**Painel.** Seção "Quem pode transmitir": lista, cria (**senha gerada pelo
+servidor**, 16 caracteres, mostrada uma única vez — melhor que uma inventada na
+hora), troca senha e remove. O admin do `.env` aparece marcado e sem botões. As
+recusas voltam com **código estável** (`account-exists`, `bad-name`,
+`short-password`…) e o painel escreve o motivo em português, como o resto do
+site.
+
+**Verificado.** `go build`/`vet`/`test ./...` limpos, gofmt conferido (sem CR).
+Testes novos: `internal/accounts` (9) — ida e volta pelo arquivo, senha nunca em
+claro nele, `.tmp` não fica para trás, nomes insensíveis a maiúsculas, regras de
+senha, cache invalidado ao trocar/remover, admin do ambiente nem gravado nem
+editável, e os seis arquivos ruins recusados; `internal/signaling` (6) — conta de
+transmissor abre sala e a sala registra o dono, conta de transmissor leva 403 no
+painel sem ser cobrada no bloqueio, CRUD da API, **hash nunca aparece na
+listagem**, admin embutido não pode ser trocado nem removido, entrada inválida
+vira 400 com código.
+
+**Smoke test do fluxo real** (binário, `.env`, porta 3999): `concorde hash` →
+`.env` → servidor sobe; admin 200 / conta de transmissor 403 / senha errada 401;
+`account add` grava só o hash; senha curta recusada; "ANA " (maiúsculo, com
+espaço) abre sala como `ana`; e os três caminhos de arranque acima, incluindo a
+recusa do `ADMIN_PASSWORD` antigo e a senha inventada.
+
+**Chrome real:** painel **8/8** (login, admin do `.env` sem botões, criar conta e
+ver a senha uma vez, a senha mostrada realmente funcionar, trocar senha invalidar
+a anterior na hora, nome inválido explicando a regra em português, remover, e o
+arquivo final sem senha em claro). E a suíte da Sessão 18 rodou de novo inteira,
+**22/22**, contra a autenticação nova.
+
+> **Harness (scratchpad, fora do repo):** ganhou `prepareRun`, que monta um
+> diretório de execução com `.env` próprio (com hash de verdade) e cópia do
+> `public/`. Rodar a partir da pasta do repo não serve mais: o `.env` real tem
+> `ADMIN_PASSWORD` e o servidor — corretamente — se recusa a subir.
+
+**Não verificado aqui:** nada em produção ainda. E a carga do bcrypt no Pi é
+estimativa: medi 263 ms nesta máquina, lá será bem mais — é por isso que o cache
+existe.
+
+**O que você precisa fazer (antes do próximo deploy):** ver o passo 1 do
+`Plano.md`.
+
+---
+
 ## Sessão 18 — Quedas: reconexão automática e retomada da sessão (2026-09-26)
 
 Branch: `main`. Passo 3 do `Plano.md`. Backend (Go) + frontend (JS/CSS).

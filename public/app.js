@@ -247,7 +247,7 @@ function handleMessage(msg) {
 
 function errorText(code, fallback) {
   const map = {
-    "bad-admin": "Usuário ou senha de admin incorretos.",
+    "bad-credentials": "Usuário ou senha incorretos.",
     "bad-room-password": "Senha da sala incorreta.",
     "room-not-found": "Sala não encontrada.",
     "room-full": "A sala está cheia.",

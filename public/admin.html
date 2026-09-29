@@ -21,6 +21,10 @@
                  placeholder="Usuário admin" autocomplete="username" />
           <input id="admin-pass" class="field" type="password"
                  placeholder="Senha admin" autocomplete="current-password" />
+          <p class="admin__hint">
+            Só o admin entra aqui. Contas de quem transmite abrem sala na
+            página principal, mas não têm acesso a este painel.
+          </p>
           <button class="btn-primary" type="submit">Entrar</button>
           <p id="login-error" class="error" hidden></p>
         </form>
@@ -33,6 +37,34 @@
           </div>
           <div id="stat-grid" class="stat-grid"></div>
           <p id="metrics-error" class="error" hidden></p>
+        </div>
+
+        <!-- Who may open a room. Shown after login. -->
+        <div id="accounts" class="card admin__accounts" hidden>
+          <div class="admin__head">
+            <h2 class="card__title">Quem pode transmitir</h2>
+          </div>
+          <form id="account-form" class="admin__newaccount">
+            <input id="account-name" class="field" type="text"
+                   placeholder="usuário do amigo (a-z, 0-9, . _ -)"
+                   autocomplete="off" />
+            <button class="btn-primary" type="submit">Criar conta</button>
+          </form>
+          <!-- A new or reset password is shown once, here, and never again. -->
+          <p id="account-secret" class="admin__secret" hidden></p>
+          <div class="admin__table-wrap">
+            <table id="accounts-table" class="admin__table">
+              <thead>
+                <tr>
+                  <th>Usuário</th>
+                  <th>Papel</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="accounts-body"></tbody>
+            </table>
+          </div>
+          <p id="accounts-error" class="error" hidden></p>
         </div>
 
         <!-- Shown after login. -->
@@ -49,6 +81,7 @@
               <thead>
                 <tr>
                   <th>Código</th>
+                  <th>De quem</th>
                   <th>Pessoas</th>
                   <th>Transmitindo</th>
                   <th>Ociosa</th>
