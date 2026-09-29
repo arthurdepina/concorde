@@ -9,11 +9,12 @@ import (
 	"time"
 )
 
-// Prefixes for loginLimiter keys. Admin and room passwords get separate streaks,
-// so a friend fumbling a room password never locks the admin out (or vice versa).
+// Prefixes for loginLimiter keys. Account logins (admin or broadcaster) and room
+// passwords get separate streaks, so a friend fumbling a room password never
+// locks anyone out of logging in, or the other way round.
 const (
-	loginKindAdmin = "admin|"
-	loginKindRoom  = "room|"
+	loginKindAccount = "account|"
+	loginKindRoom    = "room|"
 )
 
 // loginLimiter caps wrong-password attempts per visitor. After maxFailures misses

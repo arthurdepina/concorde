@@ -11,7 +11,9 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
+	"golang.org/x/crypto/bcrypt"
 
+	"github.com/arthurdepina/concorde/internal/accounts"
 	"github.com/arthurdepina/concorde/internal/config"
 )
 
@@ -67,6 +69,39 @@ func (c *testConn) expect(msgType string) map[string]any {
 	return m
 }
 
+// testHub builds a hub whose admin is cfg.AdminUser (default "admin") with the
+// password "secret", kept only in memory. The hash is made at bcrypt's cheapest
+// cost on purpose: a real one takes ~250 ms by design, which across this suite
+// would be minutes of waiting for nothing.
+func testHub(cfg config.Config) *Hub {
+	if cfg.AdminUser == "" {
+		cfg.AdminUser = "admin"
+	}
+	store, err := accounts.Open("") // memory only
+	if err != nil {
+		panic(err)
+	}
+	// bcrypt directly, not accounts.Hash: the minimum-length rule is a policy
+	// for real passwords, and "secret" is what every test here types.
+	hash, err := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.MinCost)
+	if err != nil {
+		panic(err)
+	}
+	store.SetAdmin(cfg.AdminUser, string(hash))
+	return New(cfg, store)
+}
+
+// addBroadcaster gives a hub a friend who may open rooms, with password "secret".
+func addBroadcaster(t *testing.T, h *Hub, name string) {
+	t.Helper()
+	old := accounts.HashCost
+	accounts.HashCost = bcrypt.MinCost
+	defer func() { accounts.HashCost = old }()
+	if err := h.accounts.Add(name, "secret-enough"); err != nil {
+		t.Fatalf("add broadcaster: %v", err)
+	}
+}
+
 func newTestServer(t *testing.T) string {
 	t.Helper()
 	url, _ := newTestServerHub(t)
@@ -77,9 +112,8 @@ func newTestServer(t *testing.T) string {
 // socket, so tests can exercise its admin HTTP handlers against live rooms.
 func newTestServerHub(t *testing.T) (string, *Hub) {
 	t.Helper()
-	hub := New(config.Config{
+	hub := testHub(config.Config{
 		AdminUser:       "admin",
-		AdminPassword:   "secret",
 		MaxParticipants: 3,
 	})
 	srv := httptest.NewServer(http.HandlerFunc(hub.ServeWS))
@@ -91,8 +125,8 @@ func TestCreateRoomRejectsBadAdmin(t *testing.T) {
 	url := newTestServer(t)
 	c := dial(t, url)
 	c.write(map[string]any{"type": "create-room", "user": "admin", "password": "wrong", "roomPassword": "pw"})
-	if got := c.expect("error")["code"]; got != errBadAdmin {
-		t.Fatalf("expected %q, got %v", errBadAdmin, got)
+	if got := c.expect("error")["code"]; got != errBadCredentials {
+		t.Fatalf("expected %q, got %v", errBadCredentials, got)
 	}
 }
 
@@ -244,7 +278,7 @@ func TestPeerLeftOnDisconnect(t *testing.T) {
 // newHub builds a hub with fixed admin credentials for the unit-level tests that
 // poke at rooms directly instead of over a socket.
 func newHub() *Hub {
-	return New(config.Config{AdminUser: "admin", AdminPassword: "secret", MaxParticipants: 3})
+	return testHub(config.Config{AdminUser: "admin", MaxParticipants: 3})
 }
 
 // TestWebSocketOriginCheck guards the deploy-critical behavior: same-origin by
@@ -263,7 +297,7 @@ func TestWebSocketOriginCheck(t *testing.T) {
 	}
 
 	// With the origin allow-listed, the same request connects.
-	hub := New(config.Config{AllowedOrigins: []string{"elsewhere.example"}})
+	hub := testHub(config.Config{AllowedOrigins: []string{"elsewhere.example"}})
 	srv2 := httptest.NewServer(http.HandlerFunc(hub.ServeWS))
 	defer srv2.Close()
 	wsURL2 := "ws" + strings.TrimPrefix(srv2.URL, "http")
@@ -336,7 +370,7 @@ func TestReapIdleDirect(t *testing.T) {
 }
 
 func TestReapDisabledWithZeroTTL(t *testing.T) {
-	hub := New(config.Config{RoomTTLMinutes: 0})
+	hub := testHub(config.Config{RoomTTLMinutes: 0})
 	// Should not panic or start a goroutine that touches rooms.
 	hub.StartReaper(context.Background())
 }

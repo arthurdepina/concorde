@@ -13,6 +13,7 @@ concorde
 .env
 .env.*
 !.env.example
+accounts.json
 
 # OS / editor
 .DS_Store

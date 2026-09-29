@@ -21,9 +21,8 @@ import (
 // the per-connection duration logs — but it locks in that the ping/pong loop and
 // normal traffic coexist.
 func TestKeepAliveSurvivesIdle(t *testing.T) {
-	hub := New(config.Config{
+	hub := testHub(config.Config{
 		AdminUser:       "admin",
-		AdminPassword:   "secret",
 		MaxParticipants: 3,
 		WSPingSeconds:   1,
 	})

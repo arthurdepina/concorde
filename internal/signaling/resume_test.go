@@ -15,9 +15,8 @@ import (
 // socket vacates its seat immediately — so these tests bring their own.
 func newResumeServer(t *testing.T, graceSeconds int) (string, *Hub) {
 	t.Helper()
-	hub := New(config.Config{
+	hub := testHub(config.Config{
 		AdminUser:          "admin",
-		AdminPassword:      "secret",
 		MaxParticipants:    3,
 		ResumeGraceSeconds: graceSeconds,
 	})

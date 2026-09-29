@@ -91,9 +91,8 @@ func TestClientIP(t *testing.T) {
 // newLockoutServer is newTestServerHub with the login limit on (3 misses).
 func newLockoutServer(t *testing.T) (string, *Hub) {
 	t.Helper()
-	hub := New(config.Config{
+	hub := testHub(config.Config{
 		AdminUser:           "admin",
-		AdminPassword:       "secret",
 		MaxParticipants:     3,
 		LoginMaxFailures:    3,
 		LoginLockoutMinutes: 15,
@@ -109,8 +108,8 @@ func TestCreateRoomLocksOutAfterWrongPasswords(t *testing.T) {
 
 	for i := 0; i < 3; i++ {
 		c.write(map[string]any{"type": "create-room", "user": "admin", "password": "wrong", "roomPassword": "pw"})
-		if got := c.expect("error")["code"]; got != errBadAdmin {
-			t.Fatalf("miss %d: expected %q, got %v", i+1, errBadAdmin, got)
+		if got := c.expect("error")["code"]; got != errBadCredentials {
+			t.Fatalf("miss %d: expected %q, got %v", i+1, errBadCredentials, got)
 		}
 	}
 	// Locked out now: even the right password is refused.
@@ -149,9 +148,8 @@ func TestJoinRoomLocksOutAfterWrongPasswords(t *testing.T) {
 }
 
 func TestAdminHTTPLocksOutAfterWrongPasswords(t *testing.T) {
-	hub := New(config.Config{
+	hub := testHub(config.Config{
 		AdminUser:           "admin",
-		AdminPassword:       "secret",
 		LoginMaxFailures:    3,
 		LoginLockoutMinutes: 15,
 	})

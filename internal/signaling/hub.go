@@ -14,6 +14,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/arthurdepina/concorde/internal/accounts"
 	"github.com/arthurdepina/concorde/internal/config"
 )
 
@@ -22,6 +23,9 @@ import (
 // fast. Handlers must never block while holding mu — hence non-blocking sends.
 type Hub struct {
 	cfg config.Config
+
+	// accounts is who may open a room; see package accounts.
+	accounts *accounts.Store
 
 	// startedAt anchors the uptime reported by the metrics. Set once in New.
 	startedAt time.Time
@@ -37,10 +41,13 @@ type Hub struct {
 	resumable map[string]*Client
 }
 
-// New returns a ready-to-use Hub.
-func New(cfg config.Config) *Hub {
+// New returns a ready-to-use Hub. The account store is passed in rather than
+// opened here so the caller decides where it lives (and tests keep it in
+// memory).
+func New(cfg config.Config, accts *accounts.Store) *Hub {
 	return &Hub{
 		cfg:       cfg,
+		accounts:  accts,
 		startedAt: time.Now(),
 		logins:    newLoginLimiter(cfg.LoginMaxFailures, time.Duration(cfg.LoginLockoutMinutes)*time.Minute),
 		rooms:     make(map[string]*Room),
@@ -111,22 +118,22 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 // createRoom validates admin credentials and opens a new room with the caller as
 // broadcaster.
 func (h *Hub) createRoom(c *Client, in inbound) {
-	key := loginKindAdmin + c.ip
-	now := time.Now()
-	if h.logins.lockedFor(key, now) > 0 {
+	// Deliberately before taking h.mu: verifying a password costs bcrypt time,
+	// and the hub holds one lock for every room.
+	acc, ok, wait := h.verifyLogin(c.ip, in.User, in.Password)
+	if wait > 0 {
 		c.enqueue(newError(errTooManyAttempts, "too many failed attempts, try again later"))
 		return
 	}
-	if !h.adminCredentialsOK(in.User, in.Password) {
-		h.loginFailed(key, now)
-		c.enqueue(newError(errBadAdmin, "invalid admin credentials"))
+	if !ok {
+		c.enqueue(newError(errBadCredentials, "invalid credentials"))
 		return
 	}
-	h.logins.succeed(key)
 	if strings.TrimSpace(in.RoomPassword) == "" {
 		c.enqueue(newError(errBadRoomPassword, "a room password is required"))
 		return
 	}
+	now := time.Now()
 
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -137,6 +144,7 @@ func (h *Hub) createRoom(c *Client, in inbound) {
 	room := &Room{
 		ID:         h.uniqueRoomIDLocked(),
 		Password:   in.RoomPassword,
+		Owner:      acc.Name,
 		clients:    map[string]*Client{c.id: c},
 		createdAt:  now,
 		lastActive: now,
@@ -146,7 +154,7 @@ func (h *Hub) createRoom(c *Client, in inbound) {
 	c.role = roleBroadcaster
 	h.metrics.roomsCreated.Add(1)
 
-	log.Printf("[room] %s created by %s", room.ID, c.id)
+	log.Printf("[room] %s created by %s (%s)", room.ID, acc.Name, c.id)
 	c.enqueue(roomCreatedMsg{
 		Type:   "room-created",
 		RoomID: room.ID,

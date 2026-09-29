@@ -12,7 +12,7 @@ const (
 // Error codes sent to clients. Kept stable so the frontend can branch on them.
 const (
 	errBadMessage      = "bad-message"
-	errBadAdmin        = "bad-admin"
+	errBadCredentials  = "bad-credentials"
 	errBadRoomPassword = "bad-room-password"
 	errRoomNotFound    = "room-not-found"
 	errRoomFull        = "room-full"

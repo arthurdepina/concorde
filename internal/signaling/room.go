@@ -8,6 +8,10 @@ import "time"
 type Room struct {
 	ID       string
 	Password string
+	// Owner is the account that created the room. Kept for the logs and the
+	// admin panel: with friends able to open rooms too, "who is this room?" is
+	// a question worth being able to answer.
+	Owner string
 
 	clients map[string]*Client
 

@@ -14,9 +14,23 @@ import (
 type Config struct {
 	Port int
 
-	// Only the admin can create rooms (for now).
-	AdminUser     string
-	AdminPassword string
+	// The admin: the only account that gets the admin panel, and the only one
+	// configured here rather than in the accounts file. Storing just the bcrypt
+	// hash means the password is nowhere on disk — and keeping it in the
+	// environment means a lost or corrupted accounts file can never lock the
+	// admin out of the panel that manages it. Generate the hash with
+	// `concorde hash`.
+	AdminUser         string
+	AdminPasswordHash string
+
+	// AdminPasswordPlain is read only so the server can refuse to start when an
+	// old ADMIN_PASSWORD is still lying around in the environment: falling back
+	// to it would quietly undo the point of hashing.
+	AdminPasswordPlain string
+
+	// Where the broadcaster accounts live (JSON, created on first write). Keep
+	// it out of the repo folder in production — it holds password hashes.
+	AccountsFile string
 
 	// A room with nobody broadcasting for this long gets closed.
 	RoomTTLMinutes int
@@ -64,7 +78,9 @@ func Load() Config {
 	return Config{
 		Port:                 envInt("PORT", 3000),
 		AdminUser:            envStr("ADMIN_USER", "admin"),
-		AdminPassword:        envStr("ADMIN_PASSWORD", "change-me"),
+		AdminPasswordHash:    envStr("ADMIN_PASSWORD_HASH", ""),
+		AdminPasswordPlain:   envStr("ADMIN_PASSWORD", ""),
+		AccountsFile:         envStr("ACCOUNTS_FILE", "accounts.json"),
 		RoomTTLMinutes:       envInt("ROOM_TTL_MINUTES", 10),
 		MaxParticipants:      envInt("MAX_PARTICIPANTS", 3),
 		AllowedOrigins:       envList("ALLOWED_ORIGINS"),
