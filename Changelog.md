@@ -5,6 +5,71 @@ leem este arquivo + o `Plano.md` antes de começar. Mais recente no topo.
 
 ---
 
+## Sessão 20 — Áudio: só o do que está sendo compartilhado (2026-10-03)
+
+Branch: `main`. Só frontend (`public/app.js`). Testado em Chrome real (headless).
+
+**O problema.** Quem transmitia escolhendo uma **janela** (ou a tela inteira)
+podia mandar junto o som do computador inteiro, inclusive o de uma chamada de
+voz aberta em outro programa. Sem dicas, o `getDisplayMedia` deixa o navegador
+oferecer o "áudio do sistema", que é a mistura de tudo o que toca no PC.
+
+**O que dá e o que não dá (pesquisado e medido).**
+- **Aba:** o áudio é só o da aba, como sempre foi.
+- **Janela:** o Chrome 141+ aceita `windowAudio: "window"`. Com ele, o seletor
+  oferece só o áudio do **programa dono da janela** (no Windows, loopback do
+  processo daquele programa), não o do sistema.
+- **Tela inteira:** a única opção de áudio é a mistura do sistema. **Não existe
+  API web para tirar um programa específico dela.** O Windows até tem loopback
+  que exclui um processo, mas nenhum navegador expõe isso a páginas. Por isso a
+  tela inteira passa a ir **sem som**.
+
+**Mudanças.**
+- `CAPTURE` ganhou `windowAudio: "window"` e `systemAudio: "exclude"`.
+- **Trava, não só dica.** Pela spec, essas opções são dicas que o navegador pode
+  ignorar. Quando a superfície capturada é a tela (`displaySurface ===
+  "monitor"`), as trilhas de áudio são paradas e removidas do stream antes de
+  qualquer offer sair. O teste achou um caso real disso: o caminho
+  `--use-fake-ui-for-media-stream` do Chrome devolve áudio junto com a tela
+  apesar do `systemAudio: "exclude"`.
+- **Aviso para quem transmite** quando o stream sai mudo (`warnNoAudio`): na tela
+  inteira, um toast informativo explica o motivo e sugere janela ou aba; em aba
+  ou janela com a opção de áudio desmarcada, toast de erro dizendo como
+  resolver.
+- Do lado de quem assiste nada muda: sem trilha de áudio, a offer sai sem m-line
+  de áudio, e o overlay de estatísticas já mostrava "áudio —".
+
+**Verificado.** `node --check`; `go vet`/`go test ./...` limpos (backend
+intacto).
+- O Chrome 154 **lê** `windowAudio`, `systemAudio` e `restrictOwnAudio`. Prova:
+  um objeto de opções com getters. A conversão de dicionário só toca membros que
+  o navegador conhece, e o membro de controle inventado não foi lido.
+- **Ponta a ponta, 28/28**, um cenário depois do outro na mesma sala:
+  - aba com áudio e janela com áudio: o áudio chega a quem assiste (bytes de
+    áudio entrando), sem aviso;
+  - janela com a opção desmarcada: só vídeo, aviso de erro;
+  - tela inteira pelo stub, com áudio: a trilha é parada (`ended`), nenhum byte
+    de áudio sai, aviso informativo;
+  - tela inteira pela **captura real do Chrome**: ele entregou `monitor` +
+    "Fake audio" apesar da dica, e a trava cortou.
+
+  Em todos: as duas dicas vão no pedido, o vídeo chega e "Parar" encerra.
+- A suíte da Sessão 18 rodou de novo, **22/22**.
+
+> **Harness (scratchpad, fora do repo):** o stub de captura ficou configurável
+> por `window.__capture = {mode, surface, audio}` e registra opções e streams de
+> cada chamada; `launchChrome` aceita flags extras. `--use-fake-ui-for-media-stream`
+> exercita o caminho real de captura com dispositivos falsos (tela 800×600 +
+> "Fake audio"), e ignora as dicas de áudio.
+
+**Não verificado aqui:** o **seletor real**. A opção de áudio da janela só
+aparece para quem clica: o `--auto-select-desktop-capture-source` do Chrome
+escolhe a janela, mas nunca liga o áudio, em nenhum modo. E o rótulo da captura
+de janela é `window:<id>:1`, sem título, então o site não sabe qual programa foi
+escolhido. Compartilhar a janela do próprio app de chamada levaria o som dele.
+
+---
+
 ## Sessão 19 — Contas de transmissor e senhas só como hash (2026-09-29)
 
 Branch: `main`. Passo 4 do `Plano.md`, com as decisões conversadas antes (ver

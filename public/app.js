@@ -1,7 +1,8 @@
 // Frontend client. Rooms (session 2) plus the WebRTC media path (session 3):
-// the admin captures a browser tab with getDisplayMedia and streams it directly
-// to each viewer over a peer connection. Media never touches the server — it
-// only relays the SDP/ICE "signal" messages between browsers.
+// the broadcaster captures a tab, window or screen with getDisplayMedia and
+// streams it directly to each viewer over a peer connection. Media never
+// touches the server — it only relays the SDP/ICE "signal" messages between
+// browsers.
 //
 // Topology: only the broadcaster sends media, so this is a simple star, not a
 // full mesh. The broadcaster always creates the offer; viewers only answer.
@@ -45,9 +46,16 @@ const ROLE_LABEL = { broadcaster: "quem transmite", viewer: "quem assiste" };
 // Public STUN only for now (see Plano.md: TURN is added later, if ever needed).
 const ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
 
-// getDisplayMedia hints. Target is Full HD / 24fps+ with tab audio. The browser
-// treats these as ideals; audio quality knobs are off so anime/music passes
-// through untouched instead of being processed as if it were a voice call.
+// getDisplayMedia hints. Target is Full HD / 24fps+ with the audio of what is
+// being shared. The browser treats these as ideals; audio quality knobs are off
+// so anime/music passes through untouched instead of being processed as if it
+// were a voice call.
+//
+// The audio must only ever be the shared content's own — never the rest of the
+// computer, where a voice call may be playing. A tab shares its own audio. A
+// window shares only the audio of the app that owns it (windowAudio, Chrome
+// 141+), not the system mix. A screen has nothing but the whole system mix to
+// offer, so no audio is offered with it at all.
 const CAPTURE = {
   video: {
     width: { ideal: 1920 },
@@ -60,6 +68,8 @@ const CAPTURE = {
     autoGainControl: false,
     channelCount: { ideal: 2 },
   },
+  windowAudio: "window",
+  systemAudio: "exclude",
 };
 
 // Encoding targets (numbers measured in Chrome, see Changelog, session 17).
@@ -455,7 +465,8 @@ function mergeFmtp(params, wanted) {
   return [...merged].map(([k, v]) => (v === undefined ? k : `${k}=${v}`)).join(";");
 }
 
-// startBroadcast captures a tab and streams it to every viewer in the room.
+// startBroadcast captures a tab, window or screen and streams it to every
+// viewer in the room.
 async function startBroadcast() {
   // getDisplayMedia is missing on insecure origins (non-HTTPS, non-localhost)
   // and on browsers that do not support screen capture at all.
@@ -478,6 +489,16 @@ async function startBroadcast() {
 
   state.localStream = stream;
   const [video] = stream.getVideoTracks();
+  const surface = video.getSettings().displaySurface;
+  // systemAudio is only a hint. A screen's audio can only be the whole system
+  // mix, so it never goes out, even from a browser that offered it anyway.
+  if (surface === "monitor") {
+    for (const audio of stream.getAudioTracks()) {
+      audio.stop();
+      stream.removeTrack(audio);
+    }
+  }
+  if (stream.getAudioTracks().length === 0) warnNoAudio(surface);
   // Screen capture defaults to "detail" (static text: keep resolution, drop
   // frames). Anime is moving video, so tell the encoder to favour smoothness.
   video.contentHint = "motion";
@@ -493,6 +514,20 @@ async function startBroadcast() {
   for (const peerId of state.peers.keys()) {
     offerTo(peerId);
   }
+}
+
+// warnNoAudio tells the broadcaster the stream is silent, and how to fix it: a
+// screen never carries audio (see CAPTURE), and a tab or window only does when
+// the picker's audio toggle is left on.
+function warnNoAudio(surface) {
+  if (surface === "monitor") {
+    showToast(
+      "A tela inteira vai sem som, para não levar junto o som do resto do computador. Para ter som, compartilhe uma janela ou uma aba.",
+      "info",
+    );
+    return;
+  }
+  showToast("Transmitindo sem som. Para ter som, compartilhe de novo com a opção de áudio marcada.");
 }
 
 function stopBroadcast() {
