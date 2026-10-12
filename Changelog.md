@@ -5,6 +5,36 @@ leem este arquivo + o `Plano.md` antes de começar. Mais recente no topo.
 
 ---
 
+## Sessão 21 — Repositório público (2026-10-12)
+
+Branch: `main`. Sem mudança de comportamento.
+
+**O que mudou.** O projeto passa a viver num repositório público, com o
+histórico das sessões preservado. O histórico foi reescrito com
+`git filter-repo` a partir do repositório anterior, que segue privado e intacto:
+
+- Saíram de todos os commits os documentos internos de planejamento e o guia de
+  deploy da instância pessoal (`DEPLOY.md`, que agora fica só local e entra no
+  `.gitignore`).
+- Detalhes da infra pessoal viraram exemplos, em todas as versões dos arquivos e
+  nas mensagens de commit: o domínio real virou `example.com` (por isso entradas
+  antigas falam em `concorde.example.com`), e os caminhos da máquina viraram
+  `%USERPROFILE%\…` ou `C:\concorde\…`.
+- O commit que só reescrevia o guia de deploy ficou vazio e saiu: 30 → 29
+  commits, todos com hash novo.
+
+**Regra daqui pra frente:** tudo o que é commitado, este changelog inclusive, é
+público. Nada de domínio real, caminhos locais, id de túnel ou outro detalhe da
+infra pessoal; isso vai para o `DEPLOY.md` local.
+
+**Verificado:** varredura de todas as versões de todos os arquivos, das
+mensagens e dos objetos crus do repositório, sem nenhum vestígio do que foi
+tirado. `go build`, `go vet` e `go test ./...` passam. A árvore final é idêntica
+à anterior fora as trocas acima (inclusive um comentário em
+`internal/config/config.go` que citava o domínio).
+
+---
+
 ## Sessão 20 — Áudio: só o do que está sendo compartilhado (2026-10-03)
 
 Branch: `main`. Só frontend (`public/app.js`). Testado em Chrome real (headless).

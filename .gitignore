@@ -3,6 +3,8 @@ Plano.md
 spec-pt-br.md
 task.md
 rascunhos.md
+# Deploy guide for a personal instance (real host, paths, tunnel)
+DEPLOY.md
 
 # Go build output
 /bin/
