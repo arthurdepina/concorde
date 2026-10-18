@@ -6,7 +6,9 @@ import "time"
 // swapping WebRTC signaling through the hub. Media never touches this struct —
 // it only tracks who is present. All fields are guarded by Hub.mu.
 type Room struct {
-	ID       string
+	ID string
+	// Password is what friends type to join; empty for an open room, which
+	// anyone with the code may join.
 	Password string
 	// Owner is the account that created the room. Kept for the logs and the
 	// admin panel: with friends able to open rooms too, "who is this room?" is

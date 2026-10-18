@@ -129,9 +129,11 @@ func (h *Hub) createRoom(c *Client, in inbound) {
 		c.enqueue(newError(errBadCredentials, "invalid credentials"))
 		return
 	}
-	if strings.TrimSpace(in.RoomPassword) == "" {
-		c.enqueue(newError(errBadRoomPassword, "a room password is required"))
-		return
+	// No room password makes an open room: the code (or the link) is all it
+	// takes to join. Whitespace alone counts as none — nobody means "   ".
+	roomPassword := in.RoomPassword
+	if strings.TrimSpace(roomPassword) == "" {
+		roomPassword = ""
 	}
 	now := time.Now()
 
@@ -143,7 +145,7 @@ func (h *Hub) createRoom(c *Client, in inbound) {
 
 	room := &Room{
 		ID:         h.uniqueRoomIDLocked(),
-		Password:   in.RoomPassword,
+		Password:   roomPassword,
 		Owner:      acc.Name,
 		clients:    map[string]*Client{c.id: c},
 		createdAt:  now,
@@ -164,8 +166,8 @@ func (h *Hub) createRoom(c *Client, in inbound) {
 	})
 }
 
-// joinRoom lets a friend into an existing room, given the right password and
-// room capacity, and notifies everyone already inside.
+// joinRoom lets a friend into an existing room, given the right password (if
+// the room has one) and room capacity, and notifies everyone already inside.
 func (h *Hub) joinRoom(c *Client, in inbound) {
 	roomID := strings.ToUpper(strings.TrimSpace(in.RoomID))
 	key := loginKindRoom + c.ip
@@ -180,10 +182,15 @@ func (h *Hub) joinRoom(c *Client, in inbound) {
 
 	room, ok := h.rooms[roomID]
 	if !ok {
+		// A wrong code is a miss too: an open room's code is the only thing
+		// keeping strangers out, so guessing codes must be as slow as guessing
+		// passwords.
+		h.loginFailed(key, now)
 		c.enqueue(newError(errRoomNotFound, "no room with that code"))
 		return
 	}
-	if room.Password != in.RoomPassword {
+	// An open room lets anyone with the code in, whatever they typed.
+	if room.Password != "" && room.Password != in.RoomPassword {
 		h.loginFailed(key, now)
 		c.enqueue(newError(errBadRoomPassword, "wrong room password"))
 		return

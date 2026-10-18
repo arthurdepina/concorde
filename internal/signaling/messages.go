@@ -27,7 +27,8 @@ const (
 type inbound struct {
 	Type string `json:"type"`
 
-	// create-room: admin credentials + the password friends will use to join.
+	// create-room: admin credentials + the password friends will use to join
+	// (empty for an open room).
 	User         string `json:"user"`
 	Password     string `json:"password"`
 	RoomPassword string `json:"roomPassword"`

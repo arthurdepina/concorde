@@ -62,11 +62,11 @@ type Config struct {
 	// then leaves the room at once.
 	ResumeGraceSeconds int
 
-	// Wrong passwords allowed in a row per visitor (admin and room passwords are
-	// counted separately) before that visitor is locked out for
-	// LoginLockoutMinutes — even the right password is refused meanwhile, so the
-	// passwords can't be brute-forced through the public endpoints. Zero or less
-	// disables the limit.
+	// Wrong passwords allowed in a row per visitor (logins and room entries are
+	// counted separately; a wrong room code is a miss too) before that visitor is
+	// locked out for LoginLockoutMinutes — even the right password is refused
+	// meanwhile, so neither passwords nor room codes can be brute-forced through
+	// the public endpoints. Zero or less disables the limit.
 	LoginMaxFailures    int
 	LoginLockoutMinutes int
 }

@@ -147,6 +147,27 @@ func TestJoinRoomLocksOutAfterWrongPasswords(t *testing.T) {
 	}
 }
 
+// An open room's code is its only secret, so guessing codes counts toward the
+// same lockout as guessing room passwords.
+func TestJoinRoomLocksOutAfterWrongCodes(t *testing.T) {
+	url, _ := newLockoutServer(t)
+	admin := dial(t, url)
+	admin.write(map[string]any{"type": "create-room", "user": "admin", "password": "secret", "roomPassword": ""})
+	roomID := admin.expect("room-created")["roomId"].(string)
+
+	friend := dial(t, url)
+	for i := 0; i < 3; i++ {
+		friend.write(map[string]any{"type": "join-room", "roomId": "NOROOM", "roomPassword": ""})
+		if got := friend.expect("error")["code"]; got != errRoomNotFound {
+			t.Fatalf("miss %d: expected %q, got %v", i+1, errRoomNotFound, got)
+		}
+	}
+	friend.write(map[string]any{"type": "join-room", "roomId": roomID, "roomPassword": ""})
+	if got := friend.expect("error")["code"]; got != errTooManyAttempts {
+		t.Fatalf("expected %q, got %v", errTooManyAttempts, got)
+	}
+}
+
 func TestAdminHTTPLocksOutAfterWrongPasswords(t *testing.T) {
 	hub := testHub(config.Config{
 		AdminUser:           "admin",

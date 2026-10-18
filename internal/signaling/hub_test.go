@@ -130,12 +130,21 @@ func TestCreateRoomRejectsBadAdmin(t *testing.T) {
 	}
 }
 
-func TestCreateRoomRequiresRoomPassword(t *testing.T) {
+// A room created without a password (whitespace counts as none) is open: the
+// code alone gets a friend in, whatever they type in the password field.
+func TestOpenRoomNeedsNoPassword(t *testing.T) {
 	url := newTestServer(t)
-	c := dial(t, url)
-	c.write(map[string]any{"type": "create-room", "user": "admin", "password": "secret", "roomPassword": "  "})
-	if got := c.expect("error")["code"]; got != errBadRoomPassword {
-		t.Fatalf("expected %q, got %v", errBadRoomPassword, got)
+	admin := dial(t, url)
+	admin.write(map[string]any{"type": "create-room", "user": "admin", "password": "secret", "roomPassword": "  "})
+	roomID := admin.expect("room-created")["roomId"].(string)
+
+	for _, typed := range []string{"", "anything"} {
+		friend := dial(t, url)
+		friend.write(map[string]any{"type": "join-room", "roomId": roomID, "roomPassword": typed})
+		if got := friend.expect("joined")["role"]; got != roleViewer {
+			t.Fatalf("typed %q: expected to join as viewer, got %v", typed, got)
+		}
+		admin.expect("peer-joined")
 	}
 }
 

@@ -10,8 +10,9 @@ import (
 )
 
 // Prefixes for loginLimiter keys. Account logins (admin or broadcaster) and room
-// passwords get separate streaks, so a friend fumbling a room password never
-// locks anyone out of logging in, or the other way round.
+// entries (wrong password or wrong code) get separate streaks, so a friend
+// fumbling a room password never locks anyone out of logging in, or the other
+// way round.
 const (
 	loginKindAccount = "account|"
 	loginKindRoom    = "room|"
