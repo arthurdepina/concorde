@@ -5,12 +5,23 @@ leem este arquivo + o `Plano.md` antes de começar. Mais recente no topo.
 
 ---
 
-## Sessão 21 — Repositório público (2026-10-12)
+## Sessão 21 — Repositório público: histórico limpo, README e licença (2026-10-12 a 10-18)
 
 Branch: `main`. Sem mudança de comportamento.
 
-**O que mudou.** O projeto passa a viver num repositório público, com o
-histórico das sessões preservado. O histórico foi reescrito com
+**README e licença (2026-10-18).** `README.md` em inglês: o que o projeto faz,
+como funciona (P2P, servidor só sinaliza, sem TURN, upload de um stream por
+espectador, HTTPS obrigatório), início rápido, contas de transmissor, tabela de
+configuração (todas as variáveis do `.env.example`, com os defaults do
+`internal/config`), auto-hospedagem com Cloudflare Tunnel e desenvolvimento.
+Avisa que a interface é em português. Uma ressalva que só aparece ali: atrás de
+outro proxy reverso na mesma máquina, todo visitante chega como `127.0.0.1` (o
+`CF-Connecting-IP` só é confiado vindo do loopback) e todos dividem o mesmo
+contador de bloqueio de senha. `LICENSE`: MIT, "Copyright (c) 2026 Arthur de
+Pina".
+
+**Histórico limpo (2026-10-12).** O projeto passa a viver num repositório
+público, com o histórico das sessões preservado. O histórico foi reescrito com
 `git filter-repo` a partir do repositório anterior, que segue privado e intacto:
 
 - Saíram de todos os commits os documentos internos de planejamento e o guia de
