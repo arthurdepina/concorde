@@ -29,19 +29,25 @@
 
       <section class="stage">
         <div id="video-window" class="video-window">
-          <p id="video-placeholder" class="placeholder">
-            Nenhuma transmissão ainda.
-          </p>
+          <!-- The image is optional and not in the repository: app.js reveals it
+               only once it has loaded (see README). -->
+          <div id="video-placeholder" class="placeholder">
+            <img id="placeholder-img" class="placeholder__img"
+                 src="/placeholder.webp" alt="" hidden />
+            <p>Nenhuma transmissão ainda.</p>
+          </div>
           <video id="video" class="video" playsinline hidden></video>
           <!-- Live stream numbers (resolution, fps, bitrate, path); toggled from
                the stats button, filled by app.js. -->
           <div id="stats-overlay" class="stats-overlay" hidden></div>
           <div id="video-controls" class="video-controls" hidden>
-            <label id="volume-control" class="volume">
-              <span class="volume__icon" aria-hidden="true">🔊</span>
+            <div id="volume-control" class="volume">
+              <button id="mute-btn" class="volume__icon" type="button"
+                      aria-pressed="false" aria-label="Silenciar"
+                      title="Silenciar (M)">🔊</button>
               <input id="volume" class="volume__slider" type="range"
                      min="0" max="100" value="100" aria-label="Volume" />
-            </label>
+            </div>
             <div class="video-controls__buttons">
               <button id="stats-btn" class="icon-btn" type="button"
                       aria-pressed="false" aria-label="Estatísticas da transmissão"
@@ -54,7 +60,7 @@
                 </svg>
               </button>
               <button id="fullscreen-btn" class="icon-btn" type="button"
-                      aria-label="Tela cheia" title="Tela cheia">⛶</button>
+                      aria-label="Tela cheia" title="Tela cheia (F)">⛶</button>
             </div>
           </div>
         </div>
@@ -77,7 +83,7 @@
               <input id="admin-pass" class="field" type="password"
                      placeholder="Sua senha" autocomplete="current-password" />
               <input id="new-room-pass" class="field" type="text"
-                     placeholder="Senha da sala (para os amigos)" />
+                     placeholder="Senha da sala (opcional)" />
               <button class="btn-primary" type="submit">Criar sala</button>
               <p id="create-error" class="form-error" role="alert" hidden></p>
             </form>
@@ -87,7 +93,7 @@
               <input id="join-room-id" class="field" type="text"
                      placeholder="Código da sala" autocapitalize="characters" />
               <input id="join-room-pass" class="field" type="password"
-                     placeholder="Senha da sala" />
+                     placeholder="Senha da sala (se tiver)" />
               <button class="btn-secondary" type="submit">Entrar</button>
               <p id="join-error" class="form-error" role="alert" hidden></p>
             </form>

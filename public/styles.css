@@ -279,9 +279,16 @@ body {
   height: 0.6em;
 }
 
+/* The speaker icon is also the mute toggle (the M key does the same). */
 .volume__icon {
   font-size: 1.1rem;
   line-height: 1;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  padding: 2px;
+  color: inherit;
+  cursor: pointer;
 }
 
 .volume__slider {
@@ -291,9 +298,37 @@ body {
   cursor: pointer;
 }
 
+/* What the player shows with nothing on air (the lobby, or a room before the
+   broadcast starts): the logo in the middle, the text under it. It covers the
+   whole window so the logo can be sized against the player's height. */
 .placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 16px;
   color: var(--text-muted);
   font-size: 0.95rem;
+  text-align: center;
+}
+
+/* The explicit `display` above would otherwise beat [hidden] once a video is
+   up. */
+.placeholder[hidden] {
+  display: none;
+}
+
+/* max-width and object-fit only matter in fullscreen on a portrait screen, where
+   62% of the height would be wider than the screen. */
+.placeholder__img {
+  height: 62%;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+  border-radius: 8px;
 }
 
 .panel {

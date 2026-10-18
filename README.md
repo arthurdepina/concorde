@@ -13,9 +13,10 @@ way. It was made for watching shows together with friends who live far apart.
 
 ## Features
 
-- **Password-protected rooms.** Broadcasters log in with an account; viewers
-  need only the room link (or code) and the room password.
+- **Private rooms.** Broadcasters log in with an account; viewers need only the
+  room link (or code), plus the room password if the broadcaster set one.
 - **Small rooms:** up to 3 people (broadcaster + 2 viewers) by default.
+- **Player shortcuts:** <kbd>F</kbd> toggles fullscreen, <kbd>M</kbd> mutes.
 - **Quality:** Full HD target at up to 30 fps, up to 8 Mb/s of video per viewer,
   stereo Opus audio at 128 kb/s. A stats overlay shows resolution and frame
   rate, and tells the broadcaster what is limiting each viewer (bandwidth or
@@ -33,7 +34,9 @@ way. It was made for watching shows together with friends who live far apart.
   metrics, and the broadcaster accounts.
 - **Admin and account passwords are stored only as bcrypt hashes.** Room
   passwords live in memory only, for as long as the room exists. A visitor is
-  locked out for a while after 3 wrong passwords in a row.
+  locked out for a while after 3 wrong passwords in a row. Wrong room codes
+  count too, since a room without a password has only its code to keep
+  strangers out.
 - **Small footprint:** a single Go binary plus static HTML/CSS/JS, with no
   database and no frontend build step.
 
@@ -78,8 +81,13 @@ On Windows the binary is `bin\concorde.exe`. Run it from the repository folder:
 `ADMIN_PASSWORD_HASH` is set, the server makes up a strong admin password for
 that run and prints it in the log.
 
-Open <http://localhost:3000>, log in as the admin, set a room password and
-share the room link. Friends open the link and type the room password.
+Open <http://localhost:3000>, log in as the admin, optionally set a room
+password, and share the room link. Friends open the link and type the room
+password, if there is one.
+
+While nothing is on air, the player can show an image of your choice above its
+"no broadcast yet" line: put it at `public/placeholder.webp`. The file is
+gitignored, so each instance keeps its own; without one, only the text shows.
 
 ## Broadcaster accounts
 
@@ -115,7 +123,7 @@ Set these in the environment or in a `.env` file in the working directory (see
 | `STATS_INTERVAL_MINUTES` | `15` | Interval of the metrics line in the log. `0` turns it off. |
 | `WS_PING_SECONDS` | `30` | WebSocket keepalive, so proxies don't close the quiet socket. `0` turns it off. |
 | `RESUME_GRACE_SECONDS` | `30` | How long a dropped participant's seat is held. `0` turns it off. |
-| `LOGIN_MAX_FAILURES` | `3` | Wrong passwords in a row before a visitor is locked out. `0` turns it off. |
+| `LOGIN_MAX_FAILURES` | `3` | Wrong passwords (or room codes) in a row before a visitor is locked out. `0` turns it off. |
 | `LOGIN_LOCKOUT_MINUTES` | `15` | How long the lockout lasts. |
 
 ## Self-hosting with Cloudflare Tunnel

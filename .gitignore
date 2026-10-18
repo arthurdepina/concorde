@@ -17,6 +17,9 @@ concorde
 !.env.example
 accounts.json
 
+# The empty player's image: each instance brings its own (see README)
+public/placeholder.webp
+
 # OS / editor
 .DS_Store
 Thumbs.db

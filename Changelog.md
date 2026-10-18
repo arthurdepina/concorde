@@ -5,6 +5,60 @@ leem este arquivo + o `Plano.md` antes de começar. Mais recente no topo.
 
 ---
 
+## Sessão 22 — Atalhos F/M, sala sem senha e logo no player (2026-10-18)
+
+Branch: `main`. Frontend (`public/`) e servidor (`internal/signaling`).
+
+**Atalhos de teclado.** **F** liga e desliga a tela cheia; **M** liga e desliga
+o mudo. Fazem o mesmo que os botões, e só quando eles existem: para quem
+assiste, com a transmissão na tela (`watching()`). A única exceção é que o F
+sempre tira da tela cheia, mesmo depois que a transmissão acabou. Uma letra
+digitada num campo de texto continua sendo texto (códigos de sala podem ter F
+ou M), e combinações com Ctrl/Alt/Cmd ficam com o navegador. Os títulos dos
+botões avisam a tecla ("Tela cheia (F)").
+
+**Mudo.** O ícone 🔊 ao lado do volume virou botão (🔊/🔇, `aria-pressed`). O
+mudo é escolha de quem assiste e sobrevive a parar e recomeçar a transmissão.
+Mexer no volume tira o mudo. A prévia de quem transmite continua sempre muda: o
+mudo só mexe no `<video>` quando o papel é `viewer`. Na tela cheia, o M traz os
+controles de volta por um instante para o ícone mostrar o que mudou.
+
+**Sala sem senha.** O campo agora diz "Senha da sala (opcional)". Senha vazia
+(ou só espaços) cria uma **sala aberta**: entra quem tiver o código ou o link,
+digitando qualquer coisa no campo de senha. No formulário de entrar, o campo
+virou "Senha da sala (se tiver)".
+- **Código errado agora conta como tentativa errada.** Numa sala aberta, o
+  código é a única coisa que barra estranhos, e antes adivinhar códigos não
+  tinha limite. Agora "sala não encontrada" entra no mesmo contador das senhas
+  de sala erradas (3 seguidas → 15 minutos de bloqueio, pelos defaults). O
+  custo: quem errar o código 3 vezes seguidas também espera.
+
+**Imagem no player.** Com nada no ar (no lobby, ou na sala antes de começar),
+o player pode mostrar uma imagem no meio, com "Nenhuma transmissão ainda."
+embaixo. A imagem ocupa 62% da altura do player, então acompanha o tamanho dele
+e a tela cheia.
+- **Não faz parte do repositório:** cada instância põe a sua em
+  `public/placeholder.webp`, que está no `.gitignore` (o README explica).
+- Por isso ela começa escondida e só aparece depois de carregar de verdade
+  (`revealPlaceholderImage`). Sem o arquivo, o player mostra só o texto, sem
+  ícone de imagem quebrada. A checagem cobre o caso de a imagem já ter
+  carregado (ou falhado) antes de o módulo rodar.
+
+**Verificado.** `go vet` e `go test ./...` passam, com dois testes novos: sala
+aberta aceita senha vazia e senha qualquer (`TestOpenRoomNeedsNoPassword`, no
+lugar do teste que exigia senha), e códigos errados levam ao bloqueio
+(`TestJoinRoomLocksOutAfterWrongCodes`). **Ponta a ponta no Chrome headless,
+31/31 com a imagem e 3/3 sem ela:** a imagem aparece só depois de carregar, no
+centro e no tamanho certo; sem o arquivo, nada de ícone quebrado e o texto fica
+sozinho no centro; F/M digitados no campo do código viram
+texto; F/M não fazem nada antes da transmissão nem para quem transmite; sala
+criada e acessada sem senha; M e M maiúsculo alternam o mudo; Ctrl+M é
+ignorado; o botão de alto-falante e o volume; F entra e sai da tela cheia (com
+o foco no volume também); M na tela cheia; o mudo continua depois de parar e
+recomeçar; F sai da tela cheia depois que a transmissão acaba.
+
+---
+
 ## Sessão 21 — Repositório público: histórico limpo, README e licença (2026-10-12 a 10-18)
 
 Branch: `main`. Sem mudança de comportamento.

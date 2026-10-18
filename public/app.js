@@ -30,9 +30,11 @@ const els = {
   video: document.getElementById("video"),
   videoWindow: document.getElementById("video-window"),
   videoPlaceholder: document.getElementById("video-placeholder"),
+  placeholderImg: document.getElementById("placeholder-img"),
   videoControls: document.getElementById("video-controls"),
   volume: document.getElementById("volume"),
   volumeControl: document.getElementById("volume-control"),
+  muteBtn: document.getElementById("mute-btn"),
   fullscreenBtn: document.getElementById("fullscreen-btn"),
   statsBtn: document.getElementById("stats-btn"),
   statsOverlay: document.getElementById("stats-overlay"),
@@ -631,7 +633,7 @@ function showLocalPreview() {
 
 function showRemoteStream(stream) {
   els.video.srcObject = stream;
-  els.video.muted = false;
+  els.video.muted = muted;
   els.video.volume = els.volume.value / 100;
   setControls({ viewer: true });
   showVideo();
@@ -656,6 +658,45 @@ function hideVideo() {
   els.videoControls.hidden = true;
   els.videoPlaceholder.hidden = false;
   syncStats();
+}
+
+// The image over "Nenhuma transmissão ainda." is optional: it is not in the
+// repository, each instance brings its own. So it starts hidden and only shows
+// once it has actually loaded — no broken-image icon where there is none, just
+// the text. It may well have loaded (or failed) before this module ran.
+function revealPlaceholderImage() {
+  const img = els.placeholderImg;
+  if (img.complete) {
+    img.hidden = img.naturalWidth === 0;
+    return;
+  }
+  img.addEventListener("load", () => { img.hidden = false; }, { once: true });
+}
+
+// A viewer with the stream on screen: who the volume and fullscreen controls
+// (and their keys) are for.
+function watching() {
+  return state.role === "viewer" && !els.video.hidden;
+}
+
+// --- mute ------------------------------------------------------------------
+
+// Muting is the viewer's call (the speaker button, or M) and outlasts the
+// stream: if the broadcaster stops and starts again, the new stream comes in
+// muted too. The broadcaster's preview is always muted (see showLocalPreview),
+// and this never unmutes it.
+let muted = false;
+
+function toggleMute() {
+  setMuted(!muted);
+}
+
+function setMuted(on) {
+  muted = on;
+  if (state.role === "viewer") els.video.muted = muted;
+  els.muteBtn.textContent = muted ? "🔇" : "🔊";
+  els.muteBtn.setAttribute("aria-pressed", String(muted));
+  els.muteBtn.title = muted ? "Ativar som (M)" : "Silenciar (M)";
 }
 
 // --- stream stats ----------------------------------------------------------
@@ -1071,7 +1112,7 @@ function syncFullscreenButton() {
     "aria-label",
     on ? "Sair da tela cheia" : "Tela cheia",
   );
-  els.fullscreenBtn.title = on ? "Sair da tela cheia" : "Tela cheia";
+  els.fullscreenBtn.title = on ? "Sair da tela cheia (F)" : "Tela cheia (F)";
 }
 
 // While in fullscreen, the controls (and cursor) hide after a couple of seconds
@@ -1099,6 +1140,32 @@ function onFullscreenChange() {
     clearTimeout(hideControlsTimer);
     els.videoWindow.classList.remove("controls-hidden");
   }
+}
+
+// --- keyboard shortcuts ----------------------------------------------------
+
+// F toggles fullscreen and M toggles mute, like most video players. They do what
+// the matching buttons do, and only when those are on screen (see watching) —
+// except that F always gets you out of fullscreen. A letter typed into a field
+// is just text (room codes can have an F or an M in them), and anything held
+// with Ctrl/Alt/Cmd belongs to the browser.
+const TEXT_ENTRY = "input:not([type=range]), textarea, select, [contenteditable]";
+
+function onShortcut(e) {
+  if (e.ctrlKey || e.altKey || e.metaKey || e.repeat) return;
+  if (e.target.closest?.(TEXT_ENTRY)) return;
+  const key = e.key.toLowerCase();
+  if (key === "f" && (document.fullscreenElement || watching())) {
+    toggleFullscreen();
+  } else if (key === "m" && watching()) {
+    toggleMute();
+    // In fullscreen the controls may have faded out; bring them back so the
+    // speaker icon shows what just happened.
+    if (document.fullscreenElement) revealControls();
+  } else {
+    return;
+  }
+  e.preventDefault();
 }
 
 // --- room URL (hash) -------------------------------------------------------
@@ -1206,6 +1273,8 @@ els.broadcastBtn.addEventListener("click", () => {
 
 els.fullscreenBtn.addEventListener("click", toggleFullscreen);
 document.addEventListener("fullscreenchange", onFullscreenChange);
+els.muteBtn.addEventListener("click", toggleMute);
+document.addEventListener("keydown", onShortcut);
 els.statsBtn.addEventListener("click", toggleStats);
 
 els.browserWarningClose.addEventListener("click", () => {
@@ -1214,6 +1283,8 @@ els.browserWarningClose.addEventListener("click", () => {
 
 els.volume.addEventListener("input", () => {
   els.video.volume = els.volume.value / 100;
+  // Reaching for the volume means wanting to hear it.
+  if (muted) setMuted(false);
 });
 
 // A link pasted into the bar while in the lobby (or the one this page opened
@@ -1232,6 +1303,7 @@ document.addEventListener("visibilitychange", () => {
 els.broadcastBtn.hidden = true;
 
 maybeWarnBrowser();
+revealPlaceholderImage();
 restoreSession(); // a reload can walk straight back into the room
 applyHashToJoinForm();
 syncStats(); // restore the remembered stats toggle state on the button
